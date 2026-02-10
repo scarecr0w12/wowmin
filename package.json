@@ -12,9 +12,9 @@
     "build:linux": "electron-builder --linux",
     "build:all": "electron-builder --win --linux"
   },
-  "keywords": ["azerothcore", "wow", "soap", "admin"],
-  "author": "WoW Admin <wowadmin@localhost>",
-  "homepage": "https://github.com/wow-admin/wow-admin",
+  "keywords": ["azerothcore", "wow", "soap", "admin", "azerothcore-tools"],
+  "author": "scarecr0w12",
+  "homepage": "https://github.com/scarecr0w12/wowmin",
   "license": "MIT",
   "devDependencies": {
     "electron": "^33.0.0",
