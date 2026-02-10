@@ -16,11 +16,11 @@ jobs:
       matrix:
         include:
           - os: ubuntu-latest
-            build_cmd: npm run build:linux
+            build_flags: --linux
           - os: windows-latest
-            build_cmd: npm run build:win
+            build_flags: --win
           - os: macos-latest
-            build_cmd: npm run build:mac
+            build_flags: --mac
 
     steps:
       - uses: actions/checkout@v4
@@ -33,7 +33,7 @@ jobs:
       - run: npm ci
 
       - name: Build Electron app
-        run: ${{ matrix.build_cmd }} --publish never
+        run: npx electron-builder ${{ matrix.build_flags }} --publish never
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
