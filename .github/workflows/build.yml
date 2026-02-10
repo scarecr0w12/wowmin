@@ -8,8 +8,8 @@ on:
     branches: [main]
 
 jobs:
-  lint:
-    name: Lint
+  check:
+    name: Check
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -18,11 +18,12 @@ jobs:
           node-version: 20
           cache: npm
       - run: npm ci
-      - run: npx electron . --version  # sanity check
+      - name: Verify Electron installed
+        run: npx electron --version
 
   build:
     name: Build (${{ matrix.os }})
-    needs: lint
+    needs: check
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
