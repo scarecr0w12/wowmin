@@ -1,0 +1,756 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>WoW Admin – AzerothCore SOAP Console</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+
+  <!-- ─── Connection Panel ─── -->
+  <header id="connection-bar">
+    <div class="connection-row">
+      <div class="profile-selector">
+        <label>
+          Profile
+          <select id="profile-select">
+            <option value="">— Select profile —</option>
+          </select>
+        </label>
+        <button id="btn-save-profile" class="btn btn-small" title="Save current fields as new profile">＋ Save</button>
+        <button id="btn-update-profile" class="btn btn-small" title="Update selected profile" disabled>✎ Update</button>
+        <button id="btn-delete-profile" class="btn btn-small btn-danger" title="Delete selected profile" disabled>✕</button>
+      </div>
+      <div class="connection-fields">
+        <label>Host <input type="text" id="host" value="127.0.0.1" /></label>
+        <label>Port <input type="number" id="port" value="7878" /></label>
+        <label>Username <input type="text" id="username" placeholder="soap user" /></label>
+        <label>Password <input type="password" id="password" placeholder="password" /></label>
+        <button id="btn-connect" class="btn btn-connect">Connect</button>
+        <button id="btn-disconnect" class="btn btn-disconnect" disabled>Disconnect</button>
+      </div>
+    </div>
+    <div id="status-indicator" class="status disconnected">Disconnected</div>
+  </header>
+
+  <!-- ─── Tab Bar ─── -->
+  <nav id="tab-bar">
+    <button class="tab active" data-tab="dashboard">⊞ Dashboard</button>
+    <button class="tab" data-tab="players">☺ Players</button>
+    <button class="tab" data-tab="accounts">⚙ Accounts</button>
+    <button class="tab" data-tab="tickets">✉ Tickets</button>
+    <button class="tab" data-tab="console">▸ Console</button>
+  </nav>
+
+  <!-- ═══════════════════════════════════════════════════════ -->
+  <!-- TAB: Dashboard                                         -->
+  <!-- ═══════════════════════════════════════════════════════ -->
+  <div id="tab-dashboard" class="tab-content active">
+    <div class="dashboard-grid">
+
+      <!-- Server Info card -->
+      <div class="card card-wide">
+        <div class="card-header">
+          <h3>Server Info</h3>
+          <button class="btn btn-tiny btn-refresh" data-action="refresh-dashboard" title="Refresh now">⟳</button>
+        </div>
+        <div class="card-body" id="dash-server-info">
+          <p class="placeholder">Connect to view server information</p>
+        </div>
+      </div>
+
+      <!-- Uptime -->
+      <div class="card">
+        <div class="card-header"><h3>Uptime</h3></div>
+        <div class="card-body center">
+          <span class="big-stat" id="uptime-value">--</span>
+        </div>
+      </div>
+
+      <!-- Online Players -->
+      <div class="card">
+        <div class="card-header"><h3>Players Online</h3></div>
+        <div class="card-body center">
+          <span class="big-stat accent" id="players-count">--</span>
+        </div>
+      </div>
+
+      <!-- Peak -->
+      <div class="card">
+        <div class="card-header"><h3>Connection Peak</h3></div>
+        <div class="card-body center">
+          <span class="big-stat" id="peak-count">--</span>
+        </div>
+      </div>
+
+      <!-- MOTD -->
+      <div class="card">
+        <div class="card-header"><h3>Message of the Day</h3></div>
+        <div class="card-body" id="dash-motd">
+          <p class="placeholder">--</p>
+        </div>
+      </div>
+
+      <!-- Quick Actions -->
+      <div class="card card-wide">
+        <div class="card-header"><h3>Quick Actions</h3></div>
+        <div class="card-body quick-actions">
+          <button class="btn btn-action" data-cmd="saveall">💾 Save All</button>
+          <button class="btn btn-action" data-cmd="reload all">🔄 Reload All</button>
+          <button class="btn btn-action" data-cmd="reload config">🔧 Reload Config</button>
+          <button class="btn btn-action" data-cmd="server shutdown 300">⏱ Shutdown 5m</button>
+          <button class="btn btn-action" data-cmd="server shutdown 60">⏱ Shutdown 1m</button>
+          <button class="btn btn-action" data-cmd="server restart 300">♻ Restart 5m</button>
+          <button class="btn btn-action" data-cmd="server restart 60">♻ Restart 1m</button>
+          <button class="btn btn-action btn-danger-action" data-cmd="server shutdown cancel">✕ Cancel Shutdown</button>
+          <button class="btn btn-action" data-cmd="server set closed on">🔒 Close Server</button>
+          <button class="btn btn-action" data-cmd="server set closed off">🔓 Open Server</button>
+          <button class="btn btn-action" data-cmd="gm list">🛡 GM List</button>
+          <button class="btn btn-action" data-cmd="server corpses">💀 Expire Corpses</button>
+          <button class="btn btn-action" data-cmd="server debug">🐛 Server Debug</button>
+        </div>
+      </div>
+
+      <!-- Set MOTD -->
+      <div class="card card-wide">
+        <div class="card-header"><h3>Set Message of the Day</h3></div>
+        <div class="card-body">
+          <form id="set-motd-form" class="inline-form">
+            <input type="text" id="set-motd-msg" placeholder="Enter new MOTD..." class="input-wide" />
+            <button type="submit" class="btn btn-accent">Set MOTD</button>
+          </form>
+        </div>
+      </div>
+
+      <!-- Announcement -->
+      <div class="card card-wide">
+        <div class="card-header"><h3>Server Announcement</h3></div>
+        <div class="card-body">
+          <form id="announce-form" class="inline-form">
+            <input type="text" id="announce-msg" placeholder="Type announcement message..." class="input-wide" />
+            <button type="submit" class="btn btn-accent">Announce</button>
+          </form>
+        </div>
+      </div>
+
+      <!-- Activity Log -->
+      <div class="card card-full">
+        <div class="card-header">
+          <h3>Activity Log</h3>
+          <button class="btn btn-tiny" id="btn-clear-log" title="Clear log">Clear</button>
+        </div>
+        <div class="card-body">
+          <div id="activity-log" class="log-area"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════ -->
+  <!-- TAB: Players                                           -->
+  <!-- ═══════════════════════════════════════════════════════ -->
+  <div id="tab-players" class="tab-content">
+    <div class="panel-toolbar">
+      <h2>Online Players</h2>
+      <div class="toolbar-right">
+        <button class="btn btn-tiny btn-refresh" data-action="refresh-players" title="Refresh">⟳ Refresh</button>
+        <label class="auto-refresh-toggle">
+          <input type="checkbox" id="auto-refresh-players" /> Auto (30s)
+        </label>
+      </div>
+    </div>
+
+    <!-- Stats bar -->
+    <div class="players-stats-bar">
+      <div class="stat-chip"><span class="stat-label">Total Online</span><span class="stat-value" id="stat-total">0</span></div>
+      <div class="stat-chip"><span class="stat-label">Real Players</span><span class="stat-value accent" id="stat-real">0</span></div>
+      <div class="stat-chip"><span class="stat-label">Bots</span><span class="stat-value" id="stat-bots">0</span></div>
+      <div class="stat-chip"><span class="stat-label">Unique Accounts</span><span class="stat-value" id="stat-accounts">0</span></div>
+    </div>
+
+    <!-- Search / Filter bar -->
+    <div class="players-filter-bar">
+      <div class="filter-group">
+        <input type="text" id="players-search" placeholder="Search character, account, zone, map..." class="players-search-input" />
+      </div>
+      <div class="filter-group">
+        <label class="filter-label">Show
+          <select id="players-filter-type">
+            <option value="all">All</option>
+            <option value="real" selected>Real Players</option>
+            <option value="bots">Bots Only</option>
+            <option value="gm">GMs Only</option>
+          </select>
+        </label>
+        <label class="filter-label">Map
+          <select id="players-filter-map">
+            <option value="">All Maps</option>
+          </select>
+        </label>
+        <label class="filter-label">Per Page
+          <select id="players-per-page">
+            <option value="25" selected>25</option>
+            <option value="50">50</option>
+            <option value="100">100</option>
+            <option value="0">All</option>
+          </select>
+        </label>
+      </div>
+    </div>
+
+    <!-- Players table -->
+    <div class="table-container players-table-container">
+      <table id="players-table">
+        <thead>
+          <tr>
+            <th class="sortable" data-sort="name">Character ⇅</th>
+            <th class="sortable" data-sort="level">Lvl ⇅</th>
+            <th class="sortable" data-sort="race">Race ⇅</th>
+            <th class="sortable" data-sort="class">Class ⇅</th>
+            <th class="sortable" data-sort="map">Map ⇅</th>
+            <th class="sortable" data-sort="zone">Zone ⇅</th>
+            <th class="sortable" data-sort="account">Account ⇅</th>
+            <th>IP</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody id="players-tbody">
+          <tr><td colspan="9" class="placeholder">Connect and refresh to see online players</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Pagination -->
+    <div class="players-pagination" id="players-pagination">
+      <button class="btn btn-tiny" id="pg-first" title="First page">⟨⟨</button>
+      <button class="btn btn-tiny" id="pg-prev" title="Previous page">⟨</button>
+      <span class="pg-info" id="pg-info">Page 1 of 1</span>
+      <button class="btn btn-tiny" id="pg-next" title="Next page">⟩</button>
+      <button class="btn btn-tiny" id="pg-last" title="Last page">⟩⟩</button>
+      <span class="pg-total" id="pg-total">0 results</span>
+    </div>
+
+    <!-- Player Detail Modal (inline panel) -->
+    <div id="player-detail-panel" class="player-detail-panel hidden">
+      <div class="detail-header">
+        <h3 id="detail-charname">Player Info</h3>
+        <button class="btn btn-tiny" id="detail-close" title="Close">✕</button>
+      </div>
+      <div class="detail-body" id="detail-body">
+        <p class="placeholder">Loading...</p>
+      </div>
+    </div>
+
+    <!-- Player actions panel -->
+    <div class="panel-toolbar" style="margin-top: 16px;">
+      <h3>Player Action</h3>
+    </div>
+    <div class="action-panel">
+      <form id="player-action-form" class="inline-form">
+        <label>Character
+          <input type="text" id="pa-charname" placeholder="Character name" />
+        </label>
+        <label>Action
+          <select id="pa-action">
+            <optgroup label="Info">
+              <option value="pinfo">Player Info</option>
+              <option value="lookup player account">Lookup by Account</option>
+              <option value="lookup player ip">Lookup by IP</option>
+            </optgroup>
+            <optgroup label="Moderation">
+              <option value="kick">Kick</option>
+              <option value="ban account">Ban Account</option>
+              <option value="ban character">Ban Character</option>
+              <option value="ban ip">Ban IP</option>
+              <option value="unban account">Unban Account</option>
+              <option value="unban character">Unban Character</option>
+              <option value="mute">Mute</option>
+              <option value="unmute">Unmute</option>
+              <option value="freeze">Freeze</option>
+              <option value="unfreeze">Unfreeze</option>
+            </optgroup>
+            <optgroup label="Character">
+              <option value="character level">Set Level</option>
+              <option value="character rename">Force Rename</option>
+              <option value="character customize">Force Customize</option>
+              <option value="character changefaction">Change Faction</option>
+              <option value="character changerace">Change Race</option>
+              <option value="character changeaccount">Change Account</option>
+              <option value="character reputation">Reputation</option>
+              <option value="character titles">Titles</option>
+            </optgroup>
+            <optgroup label="Actions">
+              <option value="revive">Revive</option>
+              <option value="repairitems">Repair Items</option>
+              <option value="combatstop">Combat Stop</option>
+              <option value="unstuck">Unstuck</option>
+              <option value="summon">Summon</option>
+              <option value="teleport">Teleport To</option>
+            </optgroup>
+            <optgroup label="Reset">
+              <option value="reset talents">Reset Talents</option>
+              <option value="reset spells">Reset Spells</option>
+              <option value="reset stats">Reset Stats</option>
+              <option value="reset level">Reset Level</option>
+              <option value="reset honor">Reset Honor</option>
+            </optgroup>
+            <optgroup label="Mail">
+              <option value="send mail">Send Mail</option>
+              <option value="send items">Send Items</option>
+              <option value="send money">Send Money</option>
+              <option value="send message">Send Screen Message</option>
+            </optgroup>
+          </select>
+        </label>
+        <label id="pa-extra-label" style="display:none;">
+          Extra
+          <input type="text" id="pa-extra" placeholder="" />
+        </label>
+        <button type="submit" class="btn btn-accent">Execute</button>
+      </form>
+      <div id="player-action-result" class="action-result"></div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════ -->
+  <!-- TAB: Accounts                                          -->
+  <!-- ═══════════════════════════════════════════════════════ -->
+  <div id="tab-accounts" class="tab-content">
+    <div class="accounts-grid">
+
+      <!-- Create Account -->
+      <div class="card">
+        <div class="card-header"><h3>Create Account</h3></div>
+        <div class="card-body">
+          <form id="create-account-form" class="form-stack">
+            <label>Username <input type="text" id="ca-username" placeholder="newplayer" /></label>
+            <label>Password <input type="text" id="ca-password" placeholder="password" /></label>
+            <label>Expansion
+              <select id="ca-expansion">
+                <option value="0">Classic (0)</option>
+                <option value="1">TBC (1)</option>
+                <option value="2" selected>WotLK (2)</option>
+              </select>
+            </label>
+            <button type="submit" class="btn btn-accent">Create Account</button>
+          </form>
+          <div id="create-account-result" class="action-result"></div>
+        </div>
+      </div>
+
+      <!-- Change Password -->
+      <div class="card">
+        <div class="card-header"><h3>Change Password</h3></div>
+        <div class="card-body">
+          <form id="change-password-form" class="form-stack">
+            <label>Username <input type="text" id="cp-username" placeholder="account name" /></label>
+            <label>New Password <input type="text" id="cp-password" placeholder="new password" /></label>
+            <button type="submit" class="btn btn-accent">Change Password</button>
+          </form>
+          <div id="change-password-result" class="action-result"></div>
+        </div>
+      </div>
+
+      <!-- Set GM Level -->
+      <div class="card">
+        <div class="card-header"><h3>Set GM Level</h3></div>
+        <div class="card-body">
+          <form id="gm-level-form" class="form-stack">
+            <label>Username <input type="text" id="gm-username" placeholder="account name" /></label>
+            <label>Security Level
+              <select id="gm-level">
+                <option value="0">Player (0)</option>
+                <option value="1">Moderator (1)</option>
+                <option value="2">Game Master (2)</option>
+                <option value="3">Administrator (3)</option>
+              </select>
+            </label>
+            <label>Realm (-1 = all)
+              <input type="number" id="gm-realm" value="-1" />
+            </label>
+            <button type="submit" class="btn btn-accent">Set Level</button>
+          </form>
+          <div id="gm-level-result" class="action-result"></div>
+        </div>
+      </div>
+
+      <!-- Account Lookup -->
+      <div class="card">
+        <div class="card-header"><h3>Account Lookup</h3></div>
+        <div class="card-body">
+          <form id="account-lookup-form" class="form-stack">
+            <label>Search <input type="text" id="al-username" placeholder="account name" /></label>
+            <button type="submit" class="btn btn-accent">Lookup</button>
+          </form>
+          <div id="account-lookup-result" class="action-result"></div>
+        </div>
+      </div>
+
+      <!-- Ban / Unban -->
+      <div class="card">
+        <div class="card-header"><h3>Ban / Unban Account</h3></div>
+        <div class="card-body">
+          <form id="ban-form" class="form-stack">
+            <label>Account Name <input type="text" id="ban-username" placeholder="account name" /></label>
+            <label>Duration <input type="text" id="ban-duration" placeholder="e.g. 1d, 2h, 30m, 0 = permanent" value="0" /></label>
+            <label>Reason <input type="text" id="ban-reason" placeholder="reason" value="Admin action" /></label>
+            <div class="btn-row">
+              <button type="submit" class="btn btn-danger-action" data-ban-action="ban">Ban</button>
+              <button type="button" class="btn btn-accent" id="btn-unban">Unban</button>
+            </div>
+          </form>
+          <div id="ban-result" class="action-result"></div>
+        </div>
+      </div>
+
+      <!-- Online Accounts -->
+      <div class="card">
+        <div class="card-header"><h3>Online Accounts</h3></div>
+        <div class="card-body">
+          <button class="btn btn-accent" id="btn-online-accounts">Fetch List</button>
+          <div id="online-accounts-result" class="action-result"></div>
+        </div>
+      </div>
+
+      <!-- Delete Account -->
+      <div class="card">
+        <div class="card-header"><h3>Delete Account</h3></div>
+        <div class="card-body">
+          <form id="delete-account-form" class="form-stack">
+            <label>Account Name <input type="text" id="da-username" placeholder="account name" /></label>
+            <button type="submit" class="btn btn-danger-action">⚠ Delete Account</button>
+          </form>
+          <div id="delete-account-result" class="action-result"></div>
+        </div>
+      </div>
+
+      <!-- Ban Info -->
+      <div class="card">
+        <div class="card-header"><h3>Ban Info</h3></div>
+        <div class="card-body">
+          <form id="baninfo-form" class="form-stack">
+            <label>Type
+              <select id="bi-type">
+                <option value="account">Account</option>
+                <option value="character">Character</option>
+                <option value="ip">IP Address</option>
+              </select>
+            </label>
+            <label>Name / IP <input type="text" id="bi-target" placeholder="account, character, or IP" /></label>
+            <button type="submit" class="btn btn-accent">Lookup Ban</button>
+          </form>
+          <div id="baninfo-result" class="action-result"></div>
+        </div>
+      </div>
+
+      <!-- Ban List -->
+      <div class="card">
+        <div class="card-header"><h3>Ban List</h3></div>
+        <div class="card-body">
+          <form id="banlist-form" class="form-stack">
+            <label>Type
+              <select id="bl-type">
+                <option value="account">Accounts</option>
+                <option value="character">Characters</option>
+                <option value="ip">IP Addresses</option>
+              </select>
+            </label>
+            <label>Filter (optional) <input type="text" id="bl-filter" placeholder="name or IP pattern" /></label>
+            <button type="submit" class="btn btn-accent">Show Ban List</button>
+          </form>
+          <div id="banlist-result" class="action-result"></div>
+        </div>
+      </div>
+
+      <!-- IP Ban / Unban -->
+      <div class="card">
+        <div class="card-header"><h3>IP Ban / Unban</h3></div>
+        <div class="card-body">
+          <form id="ip-ban-form" class="form-stack">
+            <label>IP Address <input type="text" id="ipban-ip" placeholder="e.g. 192.168.1.100" /></label>
+            <label>Duration <input type="text" id="ipban-duration" placeholder="e.g. 1d, 2h, 0 = permanent" value="0" /></label>
+            <label>Reason <input type="text" id="ipban-reason" placeholder="reason" value="Admin action" /></label>
+            <div class="btn-row">
+              <button type="submit" class="btn btn-danger-action">Ban IP</button>
+              <button type="button" class="btn btn-accent" id="btn-unban-ip">Unban IP</button>
+            </div>
+          </form>
+          <div id="ip-ban-result" class="action-result"></div>
+        </div>
+      </div>
+
+      <!-- Set Expansion -->
+      <div class="card">
+        <div class="card-header"><h3>Set Expansion</h3></div>
+        <div class="card-body">
+          <form id="set-addon-form" class="form-stack">
+            <label>Account Name <input type="text" id="sa-username" placeholder="account name" /></label>
+            <label>Expansion
+              <select id="sa-addon">
+                <option value="0">Classic (0)</option>
+                <option value="1">TBC (1)</option>
+                <option value="2" selected>WotLK (2)</option>
+              </select>
+            </label>
+            <button type="submit" class="btn btn-accent">Set Expansion</button>
+          </form>
+          <div id="set-addon-result" class="action-result"></div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════ -->
+  <!-- TAB: Tickets                                           -->
+  <!-- ═════════════════════════════════════════════════════════ -->
+  <div id="tab-tickets" class="tab-content">
+    <div class="panel-toolbar">
+      <h2>GM Tickets</h2>
+      <div class="toolbar-right">
+        <button class="btn btn-tiny btn-refresh" data-action="refresh-tickets" title="Refresh">⟳ Refresh</button>
+      </div>
+    </div>
+
+    <div class="tickets-layout">
+      <!-- Ticket list panels -->
+      <div class="ticket-panels">
+        <div class="card">
+          <div class="card-header"><h3>Open Tickets</h3></div>
+          <div class="card-body">
+            <button class="btn btn-accent btn-sm" id="btn-ticket-list">Load Open Tickets</button>
+            <div id="ticket-list-result" class="action-result"></div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header"><h3>Online Tickets</h3></div>
+          <div class="card-body">
+            <button class="btn btn-accent btn-sm" id="btn-ticket-onlinelist">Load Online Tickets</button>
+            <div id="ticket-online-result" class="action-result"></div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header"><h3>Closed Tickets</h3></div>
+          <div class="card-body">
+            <button class="btn btn-accent btn-sm" id="btn-ticket-closedlist">Load Closed Tickets</button>
+            <div id="ticket-closed-result" class="action-result"></div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header"><h3>Escalated Tickets</h3></div>
+          <div class="card-body">
+            <button class="btn btn-accent btn-sm" id="btn-ticket-escalatedlist">Load Escalated</button>
+            <div id="ticket-escalated-result" class="action-result"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Ticket actions -->
+      <div class="ticket-actions-grid">
+        <!-- View Ticket -->
+        <div class="card">
+          <div class="card-header"><h3>View Ticket</h3></div>
+          <div class="card-body">
+            <form id="ticket-view-form" class="form-stack">
+              <label>Ticket ID or Creator
+                <div class="btn-row">
+                  <input type="text" id="tv-id" placeholder="ticket ID or player name" style="flex:1" />
+                </div>
+              </label>
+              <div class="btn-row">
+                <button type="submit" class="btn btn-accent">View by ID</button>
+                <button type="button" class="btn btn-accent" id="btn-ticket-viewname">View by Name</button>
+              </div>
+            </form>
+            <div id="ticket-view-result" class="action-result"></div>
+          </div>
+        </div>
+
+        <!-- Ticket Actions -->
+        <div class="card">
+          <div class="card-header"><h3>Ticket Actions</h3></div>
+          <div class="card-body">
+            <form id="ticket-action-form" class="form-stack">
+              <label>Ticket ID <input type="text" id="ta-id" placeholder="ticket ID" /></label>
+              <label>Action
+                <select id="ta-action">
+                  <option value="close">Close Ticket</option>
+                  <option value="delete">Delete Ticket</option>
+                  <option value="escalate">Escalate</option>
+                  <option value="assign">Assign to GM</option>
+                  <option value="unassign">Unassign</option>
+                  <option value="comment">Add Comment</option>
+                </select>
+              </label>
+              <label id="ta-extra-label">Extra (GM name / comment)
+                <input type="text" id="ta-extra" placeholder="GM name or comment text" />
+              </label>
+              <button type="submit" class="btn btn-accent">Execute</button>
+            </form>
+            <div id="ticket-action-result" class="action-result"></div>
+          </div>
+        </div>
+
+        <!-- Response -->
+        <div class="card">
+          <div class="card-header"><h3>Ticket Response</h3></div>
+          <div class="card-body">
+            <form id="ticket-response-form" class="form-stack">
+              <label>Ticket ID <input type="text" id="tr-id" placeholder="ticket ID" /></label>
+              <label>Action
+                <select id="tr-action">
+                  <option value="append">Append Response</option>
+                  <option value="appendln">Append Line</option>
+                  <option value="show">Show Response</option>
+                  <option value="delete">Delete Response</option>
+                </select>
+              </label>
+              <label>Response Text
+                <input type="text" id="tr-text" placeholder="response text" />
+              </label>
+              <button type="submit" class="btn btn-accent">Submit</button>
+            </form>
+            <div id="ticket-response-result" class="action-result"></div>
+          </div>
+        </div>
+
+        <!-- System -->
+        <div class="card">
+          <div class="card-header"><h3>Ticket System</h3></div>
+          <div class="card-body">
+            <div class="btn-row" style="flex-wrap:wrap;gap:8px">
+              <button class="btn btn-action" id="btn-ticket-reset">⟳ Reset Closed</button>
+              <button class="btn btn-action" id="btn-ticket-toggle">⭐ Toggle System</button>
+            </div>
+            <div id="ticket-system-result" class="action-result"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═════════════════════════════════════════════════════════ -->
+  <!-- ═══════════════════════════════════════════════════════ -->
+  <div id="tab-console" class="tab-content">
+    <div class="console-layout">
+      <aside id="sidebar">
+        <h3>Quick Commands</h3>
+        <div class="btn-group">
+          <h4>Server</h4>
+          <button class="quick-cmd" data-cmd="server info">Server Info</button>
+          <button class="quick-cmd" data-cmd="server motd">MOTD</button>
+          <button class="quick-cmd" data-cmd="server uptime">Uptime</button>
+          <button class="quick-cmd" data-cmd="server debug">Server Debug</button>
+          <button class="quick-cmd" data-cmd="list">Online Players</button>
+          <button class="quick-cmd" data-cmd="account onlinelist">Online Accounts</button>
+          <button class="quick-cmd" data-cmd="gm list">GM List</button>
+        </div>
+        <div class="btn-group">
+          <h4>Maintenance</h4>
+          <button class="quick-cmd" data-cmd="saveall">Save All</button>
+          <button class="quick-cmd" data-cmd="server shutdown 300">Shutdown (5m)</button>
+          <button class="quick-cmd" data-cmd="server shutdown 60">Shutdown (60s)</button>
+          <button class="quick-cmd" data-cmd="server shutdown cancel">Cancel Shutdown</button>
+          <button class="quick-cmd" data-cmd="server restart 300">Restart (5m)</button>
+          <button class="quick-cmd" data-cmd="server restart 60">Restart (60s)</button>
+          <button class="quick-cmd" data-cmd="server restart cancel">Cancel Restart</button>
+          <button class="quick-cmd" data-cmd="server set closed on">Close Server</button>
+          <button class="quick-cmd" data-cmd="server set closed off">Open Server</button>
+          <button class="quick-cmd" data-cmd="server corpses">Expire Corpses</button>
+        </div>
+        <div class="btn-group">
+          <h4>Reload</h4>
+          <button class="quick-cmd" data-cmd="reload all">Reload All</button>
+          <button class="quick-cmd" data-cmd="reload config">Reload Config</button>
+          <button class="quick-cmd" data-cmd="reload motd">Reload MOTD</button>
+          <button class="quick-cmd" data-cmd="reload all quest">Reload Quests</button>
+          <button class="quick-cmd" data-cmd="reload all spell">Reload Spells</button>
+          <button class="quick-cmd" data-cmd="reload all loot">Reload Loot</button>
+          <button class="quick-cmd" data-cmd="reload all npc">Reload NPC</button>
+          <button class="quick-cmd" data-cmd="reload all item">Reload Items</button>
+          <button class="quick-cmd" data-cmd="reload all achievement">Reload Achievements</button>
+          <button class="quick-cmd" data-cmd="reload all gossips">Reload Gossips</button>
+          <button class="quick-cmd" data-cmd="reload all scripts">Reload Scripts</button>
+          <button class="quick-cmd" data-cmd="reload all locales">Reload Locales</button>
+          <button class="quick-cmd" data-cmd="reload autobroadcast">Reload Autobroadcast</button>
+          <button class="quick-cmd" data-cmd="reload smart_scripts">Reload SmartAI</button>
+          <button class="quick-cmd" data-cmd="reload creature_template">Reload CTemplate</button>
+          <button class="quick-cmd" data-cmd="reload npc_vendor">Reload Vendors</button>
+          <button class="quick-cmd" data-cmd="reload trainer">Reload Trainers</button>
+        </div>
+        <div class="btn-group">
+          <h4>Announcements</h4>
+          <button class="quick-cmd" data-cmd="announce Maintenance in 5 minutes!">Announce</button>
+          <button class="quick-cmd" data-cmd="gmannounce Admin notice">GM Announce</button>
+        </div>
+        <div class="btn-group">
+          <h4>Tickets</h4>
+          <button class="quick-cmd" data-cmd="ticket list">Open Tickets</button>
+          <button class="quick-cmd" data-cmd="ticket onlinelist">Online Tickets</button>
+          <button class="quick-cmd" data-cmd="ticket closedlist">Closed Tickets</button>
+          <button class="quick-cmd" data-cmd="ticket escalatedlist">Escalated</button>
+        </div>
+        <div class="btn-group">
+          <h4>Bans</h4>
+          <button class="quick-cmd" data-cmd="banlist account">Ban List (Account)</button>
+          <button class="quick-cmd" data-cmd="banlist character">Ban List (Char)</button>
+          <button class="quick-cmd" data-cmd="banlist ip">Ban List (IP)</button>
+        </div>
+        <div class="btn-group">
+          <h4>Lookup</h4>
+          <button class="quick-cmd" data-cmd="lookup area">Lookup Area</button>
+          <button class="quick-cmd" data-cmd="lookup item">Lookup Item</button>
+          <button class="quick-cmd" data-cmd="lookup creature">Lookup Creature</button>
+          <button class="quick-cmd" data-cmd="lookup quest">Lookup Quest</button>
+          <button class="quick-cmd" data-cmd="lookup spell">Lookup Spell</button>
+          <button class="quick-cmd" data-cmd="lookup event">Lookup Event</button>
+          <button class="quick-cmd" data-cmd="lookup object">Lookup Object</button>
+          <button class="quick-cmd" data-cmd="lookup skill">Lookup Skill</button>
+          <button class="quick-cmd" data-cmd="lookup tele">Lookup Teleport</button>
+          <button class="quick-cmd" data-cmd="lookup title">Lookup Title</button>
+          <button class="quick-cmd" data-cmd="lookup map">Lookup Map</button>
+          <button class="quick-cmd" data-cmd="lookup taxinode">Lookup Taxi Node</button>
+          <button class="quick-cmd" data-cmd="lookup player account">Lookup Player (Acct)</button>
+          <button class="quick-cmd" data-cmd="lookup player ip">Lookup Player (IP)</button>
+          <button class="quick-cmd" data-cmd="lookup player email">Lookup Player (Email)</button>
+          <button class="quick-cmd" data-cmd="lookup account name">Lookup Account</button>
+        </div>
+        <div class="btn-group">
+          <h4>Characters</h4>
+          <button class="quick-cmd" data-cmd="character deleted list">Deleted Characters</button>
+        </div>
+      </aside>
+
+      <section id="console-area">
+        <div id="output"></div>
+        <form id="command-form">
+          <span class="prompt">&gt;</span>
+          <input type="text" id="command-input" placeholder="Type a server command..." autocomplete="off" disabled />
+          <button type="submit" class="btn btn-send" disabled>Send</button>
+        </form>
+      </section>
+    </div>
+  </div>
+
+  <!-- ─── Modal Overlay ─── -->
+  <div id="modal-overlay" class="modal-overlay hidden">
+    <div class="modal-dialog">
+      <h3 id="modal-title">Title</h3>
+      <p  id="modal-message"></p>
+      <input type="text" id="modal-input" class="modal-input" placeholder="" />
+      <div class="modal-buttons">
+        <button id="modal-cancel" class="btn btn-small">Cancel</button>
+        <button id="modal-ok"     class="btn btn-small btn-primary">OK</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
