@@ -19,7 +19,7 @@
     "admin",
     "azerothcore-tools"
   ],
-  "author": "scarecr0w12",
+  "author": "scarecr0w12 <scarecr0w12@users.noreply.github.com>",
   "homepage": "https://github.com/scarecr0w12/wowmin",
   "license": "MIT",
   "devDependencies": {
