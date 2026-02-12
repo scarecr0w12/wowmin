@@ -512,66 +512,66 @@
       <h2>GM Tickets</h2>
       <div class="toolbar-right">
         <button class="btn btn-tiny btn-refresh" data-action="refresh-tickets" title="Refresh">⟳ Refresh</button>
+        <label class="auto-refresh-toggle">
+          <input type="checkbox" id="auto-refresh-tickets" /> Auto (30s)
+        </label>
+      </div>
+    </div>
+
+    <!-- Ticket filter tabs -->
+    <div class="ticket-filter-bar">
+      <div class="ticket-filter-tabs">
+        <button class="ticket-filter-tab active" data-filter="list">Open</button>
+        <button class="ticket-filter-tab" data-filter="onlinelist">Online</button>
+        <button class="ticket-filter-tab" data-filter="closedlist">Closed</button>
+        <button class="ticket-filter-tab" data-filter="escalatedlist">Escalated</button>
+      </div>
+      <div class="ticket-filter-right">
+        <span class="ticket-count" id="ticket-count">0 tickets</span>
+        <div class="btn-row" style="gap:6px">
+          <button class="btn btn-action btn-sm" id="btn-ticket-reset" title="Reset closed tickets">⟳ Reset Closed</button>
+          <button class="btn btn-action btn-sm" id="btn-ticket-toggle" title="Toggle ticket system">⭐ Toggle System</button>
+        </div>
+        <div id="ticket-system-result" class="action-result"></div>
       </div>
     </div>
 
     <div class="tickets-layout">
-      <!-- Ticket list panels -->
-      <div class="ticket-panels">
-        <div class="card">
-          <div class="card-header"><h3>Open Tickets</h3></div>
-          <div class="card-body">
-            <button class="btn btn-accent btn-sm" id="btn-ticket-list">Load Open Tickets</button>
-            <div id="ticket-list-result" class="action-result"></div>
-          </div>
+      <!-- Ticket list table -->
+      <div class="ticket-list-section">
+        <div class="table-container ticket-table-container">
+          <table id="ticket-table">
+            <thead>
+              <tr>
+                <th style="width:60px">#</th>
+                <th>Player</th>
+                <th>Created</th>
+                <th>Last Updated</th>
+                <th>Assigned To</th>
+                <th style="width:100px">Actions</th>
+              </tr>
+            </thead>
+            <tbody id="ticket-tbody">
+              <tr><td colspan="6" class="placeholder">Connect to load tickets</td></tr>
+            </tbody>
+          </table>
         </div>
+        <div id="ticket-list-loading" class="ticket-loading hidden">Loading tickets…</div>
+      </div>
 
-        <div class="card">
-          <div class="card-header"><h3>Online Tickets</h3></div>
-          <div class="card-body">
-            <button class="btn btn-accent btn-sm" id="btn-ticket-onlinelist">Load Online Tickets</button>
-            <div id="ticket-online-result" class="action-result"></div>
-          </div>
+      <!-- Ticket detail panel (shown when a ticket is clicked) -->
+      <div id="ticket-detail-panel" class="ticket-detail-panel hidden">
+        <div class="detail-header">
+          <h3 id="ticket-detail-title">Ticket Details</h3>
+          <button class="btn btn-tiny" id="ticket-detail-close" title="Close">✕</button>
         </div>
-
-        <div class="card">
-          <div class="card-header"><h3>Closed Tickets</h3></div>
-          <div class="card-body">
-            <button class="btn btn-accent btn-sm" id="btn-ticket-closedlist">Load Closed Tickets</button>
-            <div id="ticket-closed-result" class="action-result"></div>
-          </div>
-        </div>
-
-        <div class="card">
-          <div class="card-header"><h3>Escalated Tickets</h3></div>
-          <div class="card-body">
-            <button class="btn btn-accent btn-sm" id="btn-ticket-escalatedlist">Load Escalated</button>
-            <div id="ticket-escalated-result" class="action-result"></div>
-          </div>
+        <div class="detail-body" id="ticket-detail-body">
+          <p class="placeholder">Select a ticket to view details</p>
         </div>
       </div>
 
-      <!-- Ticket actions -->
+      <!-- Ticket actions (compact row) -->
       <div class="ticket-actions-grid">
-        <!-- View Ticket -->
-        <div class="card">
-          <div class="card-header"><h3>View Ticket</h3></div>
-          <div class="card-body">
-            <form id="ticket-view-form" class="form-stack">
-              <label>Ticket ID or Creator
-                <div class="btn-row">
-                  <input type="text" id="tv-id" placeholder="ticket ID or player name" style="flex:1" />
-                </div>
-              </label>
-              <div class="btn-row">
-                <button type="submit" class="btn btn-accent">View by ID</button>
-                <button type="button" class="btn btn-accent" id="btn-ticket-viewname">View by Name</button>
-              </div>
-            </form>
-            <div id="ticket-view-result" class="action-result"></div>
-          </div>
-        </div>
-
         <!-- Ticket Actions -->
         <div class="card">
           <div class="card-header"><h3>Ticket Actions</h3></div>
@@ -617,18 +617,6 @@
               <button type="submit" class="btn btn-accent">Submit</button>
             </form>
             <div id="ticket-response-result" class="action-result"></div>
-          </div>
-        </div>
-
-        <!-- System -->
-        <div class="card">
-          <div class="card-header"><h3>Ticket System</h3></div>
-          <div class="card-body">
-            <div class="btn-row" style="flex-wrap:wrap;gap:8px">
-              <button class="btn btn-action" id="btn-ticket-reset">⟳ Reset Closed</button>
-              <button class="btn btn-action" id="btn-ticket-toggle">⭐ Toggle System</button>
-            </div>
-            <div id="ticket-system-result" class="action-result"></div>
           </div>
         </div>
       </div>

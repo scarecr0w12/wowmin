@@ -160,6 +160,11 @@ document.querySelectorAll("#tab-bar .tab").forEach((btn) => {
     document.querySelectorAll(".tab-content").forEach((c) => c.classList.remove("active"));
     btn.classList.add("active");
     document.getElementById(`tab-${btn.dataset.tab}`).classList.add("active");
+
+    // Auto-load tickets when switching to the Tickets tab
+    if (btn.dataset.tab === "tickets" && connected) {
+      loadTickets();
+    }
   });
 });
 
@@ -209,6 +214,10 @@ $btnDisconnect.addEventListener("click", async () => {
   setConnected(false);
   stopDashboardAutoRefresh();
   stopPlayersAutoRefresh();
+  // Stop ticket auto-refresh
+  if (ticketAutoInterval) { clearInterval(ticketAutoInterval); ticketAutoInterval = null; }
+  const autoTicketsCb = document.getElementById("auto-refresh-tickets");
+  if (autoTicketsCb) autoTicketsCb.checked = false;
   appendOutput(`<div class="entry"><span class="response">Disconnected.</span></div>`);
   resetDashboard();
 });
@@ -1106,57 +1115,223 @@ document.getElementById("set-addon-form")?.addEventListener("submit", async (e) 
 // TICKETS TAB
 // ══════════════════════════════════════════════════════════════
 
-// Ticket list buttons
-document.getElementById("btn-ticket-list")?.addEventListener("click", async () => {
-  if (!connected) return;
-  const r = await exec("ticket list");
-  showResult(document.getElementById("ticket-list-result"), r.success, r.message || "No open tickets.");
-  logActivity("ticket list", r.message || "(done)", r.success);
-});
+let ticketFilter = "list";           // current filter: list | onlinelist | closedlist | escalatedlist
+let ticketAutoInterval = null;
+let ticketsLoaded = false;           // has the tickets tab been loaded at least once?
 
-document.getElementById("btn-ticket-onlinelist")?.addEventListener("click", async () => {
-  if (!connected) return;
-  const r = await exec("ticket onlinelist");
-  showResult(document.getElementById("ticket-online-result"), r.success, r.message || "No online tickets.");
-  logActivity("ticket onlinelist", r.message || "(done)", r.success);
-});
+const $ticketTbody     = document.getElementById("ticket-tbody");
+const $ticketCount     = document.getElementById("ticket-count");
+const $ticketLoading   = document.getElementById("ticket-list-loading");
+const $ticketDetail    = document.getElementById("ticket-detail-panel");
+const $ticketDetailTitle = document.getElementById("ticket-detail-title");
+const $ticketDetailBody  = document.getElementById("ticket-detail-body");
 
-document.getElementById("btn-ticket-closedlist")?.addEventListener("click", async () => {
-  if (!connected) return;
-  const r = await exec("ticket closedlist");
-  showResult(document.getElementById("ticket-closed-result"), r.success, r.message || "No closed tickets.");
-  logActivity("ticket closedlist", r.message || "(done)", r.success);
-});
+/**
+ * Parse the raw text output from `ticket list` (and variants) into structured rows.
+ * AzerothCore outputs lines like:
+ *   Ticket #<id>. Created by: <name>. Created on: <date>. Last change by: <who>
+ * or just plain text blocks. We try our best to extract structured data.
+ */
+function parseTicketList(raw) {
+  if (!raw) return [];
+  const tickets = [];
 
-document.getElementById("btn-ticket-escalatedlist")?.addEventListener("click", async () => {
-  if (!connected) return;
-  const r = await exec("ticket escalatedlist");
-  showResult(document.getElementById("ticket-escalated-result"), r.success, r.message || "No escalated tickets.");
-  logActivity("ticket escalatedlist", r.message || "(done)", r.success);
-});
+  // Try to match structured ticket lines
+  // Pattern: Number/hash followed by ticket info
+  const lines = raw.split("\n").map(l => l.trim()).filter(Boolean);
 
-// Refresh tickets button
-document.querySelector('[data-action="refresh-tickets"]')?.addEventListener("click", async () => {
-  if (!connected) return;
-  document.getElementById("btn-ticket-list")?.click();
-});
+  // Strategy 1: AzerothCore format "Ticket #N ..."
+  const ticketBlockRegex = /Ticket\s*#?(\d+)/i;
+  let currentTicket = null;
 
-// View ticket
-document.getElementById("ticket-view-form")?.addEventListener("submit", async (e) => {
-  e.preventDefault();
-  const id = document.getElementById("tv-id").value.trim();
-  if (!id || !connected) return;
+  for (const line of lines) {
+    const idMatch = line.match(ticketBlockRegex);
+    if (idMatch) {
+      if (currentTicket) tickets.push(currentTicket);
+      const id = idMatch[1];
+
+      // Extract player name
+      const playerMatch = line.match(/(?:Created\s+by|from)[:\s]+['"]?([^\s.'"\n]+)/i);
+      const player = playerMatch ? playerMatch[1] : "";
+
+      // Extract created date
+      const createdMatch = line.match(/Created\s+(?:on)?[:\s]+(.+?)(?:\.|Last|$)/i);
+      const created = createdMatch ? createdMatch[1].trim() : "";
+
+      // Extract last changed by
+      const changedMatch = line.match(/Last\s+chang(?:e|ed)\s+by[:\s]+([^\n.]+)/i);
+      const changedBy = changedMatch ? changedMatch[1].trim() : "";
+
+      // Extract assigned to
+      const assignedMatch = line.match(/Assign(?:ed)?\s+(?:to)?[:\s]+([^\n.]+)/i);
+      const assignedTo = assignedMatch ? assignedMatch[1].trim() : "";
+
+      currentTicket = { id, player, created, lastChanged: changedBy, assignedTo, raw: line };
+    } else if (currentTicket) {
+      // Additional lines belong to the current ticket
+      currentTicket.raw += "\n" + line;
+      // Try to pick up fields from continuation lines
+      if (!currentTicket.player) {
+        const pm = line.match(/(?:Created\s+by|from)[:\s]+['"]?([^\s.'"\n]+)/i);
+        if (pm) currentTicket.player = pm[1];
+      }
+      if (!currentTicket.assignedTo) {
+        const am = line.match(/Assign(?:ed)?\s+(?:to)?[:\s]+([^\n.]+)/i);
+        if (am) currentTicket.assignedTo = am[1].trim();
+      }
+    }
+  }
+  if (currentTicket) tickets.push(currentTicket);
+
+  // If we found no structured tickets, create a single "raw" entry so the user sees output
+  if (tickets.length === 0 && raw.trim() && !raw.match(/no\s+(open|online|closed|escalated)?\s*(?:gm\s+)?tickets/i)) {
+    // Check if there are any numbers that might be ticket IDs
+    const anyIds = raw.match(/#(\d+)/g);
+    if (anyIds) {
+      for (const m of anyIds) {
+        tickets.push({ id: m.replace("#", ""), player: "", created: "", lastChanged: "", assignedTo: "", raw });
+      }
+    }
+  }
+
+  return tickets;
+}
+
+/** Render ticket rows into the table. */
+function renderTicketTable(tickets) {
+  $ticketTbody.innerHTML = "";
+  $ticketCount.textContent = `${tickets.length} ticket${tickets.length !== 1 ? "s" : ""}`;
+
+  if (tickets.length === 0) {
+    $ticketTbody.innerHTML = '<tr><td colspan="6" class="placeholder">No tickets found</td></tr>';
+    return;
+  }
+
+  for (const t of tickets) {
+    const tr = document.createElement("tr");
+    tr.dataset.ticketId = t.id;
+    tr.innerHTML =
+      `<td class="ticket-id">#${escapeHtml(t.id)}</td>` +
+      `<td class="ticket-player">${escapeHtml(t.player || "—")}</td>` +
+      `<td class="ticket-date">${escapeHtml(t.created || "—")}</td>` +
+      `<td class="ticket-date">${escapeHtml(t.lastChanged || "—")}</td>` +
+      `<td class="${t.assignedTo && t.assignedTo !== "(no messages)" ? "ticket-assignee" : "ticket-assignee unassigned"}">${escapeHtml(t.assignedTo || "Unassigned")}</td>` +
+      `<td class="td-actions">` +
+        `<button class="tbl-action ticket-view-btn" data-id="${escapeHtml(t.id)}" title="View details">👁</button>` +
+        `<button class="tbl-action ticket-close-btn" data-id="${escapeHtml(t.id)}" title="Close ticket">✔</button>` +
+        `<button class="tbl-action danger ticket-delete-btn" data-id="${escapeHtml(t.id)}" title="Delete ticket">✕</button>` +
+      `</td>`;
+
+    // Click row to view ticket
+    tr.addEventListener("click", (e) => {
+      if (e.target.closest(".tbl-action")) return; // skip if action button clicked
+      viewTicket(t.id);
+      // Highlight selected row
+      $ticketTbody.querySelectorAll("tr.selected").forEach(r => r.classList.remove("selected"));
+      tr.classList.add("selected");
+    });
+
+    $ticketTbody.appendChild(tr);
+  }
+
+  // Attach inline action handlers
+  $ticketTbody.querySelectorAll(".ticket-view-btn").forEach(btn => {
+    btn.addEventListener("click", () => viewTicket(btn.dataset.id));
+  });
+  $ticketTbody.querySelectorAll(".ticket-close-btn").forEach(btn => {
+    btn.addEventListener("click", async () => {
+      const r = await exec(`ticket close ${btn.dataset.id}`);
+      logActivity(`ticket close ${btn.dataset.id}`, r.message || "(done)", r.success);
+      loadTickets(); // refresh
+    });
+  });
+  $ticketTbody.querySelectorAll(".ticket-delete-btn").forEach(btn => {
+    btn.addEventListener("click", async () => {
+      const confirmed = await showModal({ title: "Delete Ticket", message: `Delete ticket #${btn.dataset.id}? This cannot be undone.` });
+      if (!confirmed) return;
+      const r = await exec(`ticket delete ${btn.dataset.id}`);
+      logActivity(`ticket delete ${btn.dataset.id}`, r.message || "(done)", r.success);
+      loadTickets(); // refresh
+    });
+  });
+}
+
+/** Fetch ticket list using current filter and render. */
+async function loadTickets() {
+  if (!connected) {
+    $ticketTbody.innerHTML = '<tr><td colspan="6" class="placeholder">Connect to load tickets</td></tr>';
+    $ticketCount.textContent = "0 tickets";
+    return;
+  }
+
+  $ticketLoading.classList.remove("hidden");
+  const cmd = `ticket ${ticketFilter}`;
+  const r = await exec(cmd);
+  $ticketLoading.classList.add("hidden");
+
+  if (!r.success) {
+    $ticketTbody.innerHTML = `<tr><td colspan="6" class="placeholder" style="color:var(--accent)">${escapeHtml(r.message || "Failed to load tickets")}</td></tr>`;
+    $ticketCount.textContent = "Error";
+    logActivity(cmd, r.message || "Error", false);
+    return;
+  }
+
+  const tickets = parseTicketList(r.message);
+  renderTicketTable(tickets);
+  logActivity(cmd, `${tickets.length} ticket(s) loaded`, true);
+  ticketsLoaded = true;
+}
+
+/** View a single ticket's full details. */
+async function viewTicket(id) {
+  $ticketDetail.classList.remove("hidden");
+  $ticketDetailTitle.textContent = `Ticket #${id}`;
+  $ticketDetailBody.innerHTML = '<p class="placeholder">Loading…</p>';
+
+  // Auto-fill action forms
+  const taId = document.getElementById("ta-id");
+  const trId = document.getElementById("tr-id");
+  if (taId) taId.value = id;
+  if (trId) trId.value = id;
+
   const r = await exec(`ticket viewid ${id}`);
-  showResult(document.getElementById("ticket-view-result"), r.success, r.message || "Ticket not found.");
+  if (r.success) {
+    $ticketDetailBody.innerHTML = `<div class="ticket-detail-body">${escapeHtml(r.message || "No details available.")}</div>`;
+  } else {
+    $ticketDetailBody.innerHTML = `<p style="color:var(--accent)">${escapeHtml(r.message || "Failed to load ticket.")}</p>`;
+  }
   logActivity(`ticket viewid ${id}`, r.message || "(done)", r.success);
+}
+
+// Close detail panel
+document.getElementById("ticket-detail-close")?.addEventListener("click", () => {
+  $ticketDetail.classList.add("hidden");
+  $ticketTbody.querySelectorAll("tr.selected").forEach(r => r.classList.remove("selected"));
 });
 
-document.getElementById("btn-ticket-viewname")?.addEventListener("click", async () => {
-  const name = document.getElementById("tv-id").value.trim();
-  if (!name || !connected) return;
-  const r = await exec(`ticket viewname ${name}`);
-  showResult(document.getElementById("ticket-view-result"), r.success, r.message || "Ticket not found.");
-  logActivity(`ticket viewname ${name}`, r.message || "(done)", r.success);
+// Filter tab switching
+document.querySelectorAll(".ticket-filter-tab").forEach(btn => {
+  btn.addEventListener("click", () => {
+    document.querySelectorAll(".ticket-filter-tab").forEach(t => t.classList.remove("active"));
+    btn.classList.add("active");
+    ticketFilter = btn.dataset.filter;
+    loadTickets();
+  });
+});
+
+// Refresh button
+document.querySelector('[data-action="refresh-tickets"]')?.addEventListener("click", () => {
+  loadTickets();
+});
+
+// Auto-refresh toggle
+document.getElementById("auto-refresh-tickets")?.addEventListener("change", (e) => {
+  if (e.target.checked) {
+    ticketAutoInterval = setInterval(() => { if (connected) loadTickets(); }, 30000);
+  } else {
+    clearInterval(ticketAutoInterval);
+    ticketAutoInterval = null;
+  }
 });
 
 // Ticket action form
@@ -1181,6 +1356,7 @@ document.getElementById("ticket-action-form")?.addEventListener("submit", async 
   const r = await exec(cmd);
   showResult(document.getElementById("ticket-action-result"), r.success, r.message || "(done)");
   logActivity(cmd, r.message || "(done)", r.success);
+  loadTickets(); // refresh list after action
 });
 
 // Ticket response form
@@ -1211,6 +1387,7 @@ document.getElementById("btn-ticket-reset")?.addEventListener("click", async () 
   const r = await exec("ticket reset");
   showResult(document.getElementById("ticket-system-result"), r.success, r.message || "(done)");
   logActivity("ticket reset", r.message || "(done)", r.success);
+  loadTickets();
 });
 
 document.getElementById("btn-ticket-toggle")?.addEventListener("click", async () => {
