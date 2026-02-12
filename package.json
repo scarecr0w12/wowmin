@@ -1,6 +1,6 @@
 {
   "name": "wow-admin",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Desktop admin tool for AzerothCore servers via SOAP",
   "main": "src/main.js",
   "scripts": {
@@ -12,7 +12,13 @@
     "build:linux": "electron-builder --linux",
     "build:all": "electron-builder --win --linux"
   },
-  "keywords": ["azerothcore", "wow", "soap", "admin", "azerothcore-tools"],
+  "keywords": [
+    "azerothcore",
+    "wow",
+    "soap",
+    "admin",
+    "azerothcore-tools"
+  ],
   "author": "scarecr0w12",
   "homepage": "https://github.com/scarecr0w12/wowmin",
   "license": "MIT",
@@ -39,11 +45,15 @@
       "target": [
         {
           "target": "nsis",
-          "arch": ["x64"]
+          "arch": [
+            "x64"
+          ]
         },
         {
           "target": "portable",
-          "arch": ["x64"]
+          "arch": [
+            "x64"
+          ]
         }
       ],
       "icon": "assets/icon.ico",
@@ -59,7 +69,10 @@
       "target": [
         {
           "target": "dmg",
-          "arch": ["x64", "arm64"]
+          "arch": [
+            "x64",
+            "arm64"
+          ]
         }
       ],
       "icon": "assets/icon_1024.png",
@@ -70,15 +83,21 @@
       "target": [
         {
           "target": "AppImage",
-          "arch": ["x64"]
+          "arch": [
+            "x64"
+          ]
         },
         {
           "target": "deb",
-          "arch": ["x64"]
+          "arch": [
+            "x64"
+          ]
         },
         {
           "target": "tar.gz",
-          "arch": ["x64"]
+          "arch": [
+            "x64"
+          ]
         }
       ],
       "icon": "assets/icon.png",
