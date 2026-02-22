@@ -7,6 +7,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>WoW Admin – AzerothCore SOAP Console</title>
   <link rel="stylesheet" href="styles.css" />
+  <link rel="stylesheet" href="styles/output.css" />
 </head>
 <body>
 
@@ -42,6 +43,7 @@
     <button class="tab" data-tab="players">☺ Players</button>
     <button class="tab" data-tab="accounts">⚙ Accounts</button>
     <button class="tab" data-tab="tickets">✉ Tickets</button>
+    <button class="tab" data-tab="database">🗄 Database</button>
     <button class="tab" data-tab="console">▸ Console</button>
   </nav>
 
@@ -623,8 +625,178 @@
     </div>
   </div>
 
-  <!-- ═════════════════════════════════════════════════════════ -->
   <!-- ═══════════════════════════════════════════════════════ -->
+  <!-- TAB: Database                                           -->
+  <!-- ═══════════════════════════════════════════════════════ -->
+  <div id="tab-database" class="tab-content">
+    <div class="db-layout">
+      <!-- Database Connection Sidebar -->
+      <aside class="db-sidebar">
+        <div class="db-connection-panel">
+          <h3 class="text-wow-gold font-semibold mb-3">Database Connection</h3>
+          
+          <div class="db-connection-form">
+            <label class="block mb-2">
+              <span class="text-dark-text-muted text-sm">Database Type</span>
+              <select id="db-type" class="select-wow mt-1">
+                <option value="world">World</option>
+                <option value="auth">Auth</option>
+                <option value="characters">Characters</option>
+              </select>
+            </label>
+            
+            <label class="block mb-2">
+              <span class="text-dark-text-muted text-sm">Host</span>
+              <input type="text" id="db-host" class="input-wow mt-1" value="127.0.0.1" />
+            </label>
+            
+            <label class="block mb-2">
+              <span class="text-dark-text-muted text-sm">Port</span>
+              <input type="number" id="db-port" class="input-wow mt-1" value="3306" />
+            </label>
+            
+            <label class="block mb-2">
+              <span class="text-dark-text-muted text-sm">Username</span>
+              <input type="text" id="db-user" class="input-wow mt-1" value="acore" />
+            </label>
+            
+            <label class="block mb-2">
+              <span class="text-dark-text-muted text-sm">Password</span>
+              <input type="password" id="db-password" class="input-wow mt-1" />
+            </label>
+            
+            <label class="block mb-2">
+              <span class="text-dark-text-muted text-sm">Database</span>
+              <input type="text" id="db-name" class="input-wow mt-1" value="acore_world" />
+            </label>
+            
+            <div class="flex gap-2 mt-4">
+              <button id="db-connect-btn" class="btn-wow-primary flex-1">Connect</button>
+              <button id="db-disconnect-btn" class="btn-wow flex-1" disabled>Disconnect</button>
+            </div>
+          </div>
+          
+          <div id="db-connection-status" class="mt-3 p-2 rounded bg-dark-bg-tertiary text-sm">
+            <span class="text-dark-text-muted">Status:</span>
+            <span id="db-status-text" class="text-wow-red">Disconnected</span>
+          </div>
+        </div>
+        
+        <!-- Table Browser -->
+        <div class="db-table-browser mt-4">
+          <div class="flex items-center justify-between mb-2">
+            <h3 class="text-wow-gold font-semibold">Tables</h3>
+            <button id="db-refresh-tables" class="btn-wow text-xs px-2 py-1" disabled>⟳</button>
+          </div>
+          <input type="text" id="db-table-search" class="input-wow mb-2" placeholder="Search tables..." disabled />
+          <div id="db-table-list" class="db-table-list">
+            <p class="text-dark-text-muted text-sm p-2">Connect to view tables</p>
+          </div>
+        </div>
+      </aside>
+      
+      <!-- Main Database Content Area -->
+      <main class="db-main">
+        <!-- Database Sub-tabs -->
+        <div class="db-subtabs">
+          <button class="tab-wow-active" data-subtab="db-sql-editor">SQL Editor</button>
+          <button class="tab-wow" data-subtab="db-table-editor">Table Editor</button>
+          <button class="tab-wow" data-subtab="db-entity-editor">Entity Editor</button>
+        </div>
+        
+        <!-- SQL Editor Subtab -->
+        <div id="db-sql-editor" class="db-subtab-content">
+          <div class="db-editor-toolbar">
+            <button id="sql-execute-btn" class="btn-wow-primary" disabled>▶ Execute</button>
+            <button id="sql-execute-selected-btn" class="btn-wow" disabled>▶ Selected</button>
+            <button id="sql-clear-btn" class="btn-wow">Clear</button>
+            <button id="sql-format-btn" class="btn-wow" disabled>Format</button>
+            <button id="sql-history-btn" class="btn-wow">History</button>
+            <div class="flex-1"></div>
+            <label class="flex items-center gap-2 text-sm text-dark-text-muted">
+              <input type="checkbox" id="sql-autocommit" checked />
+              Auto-commit
+            </label>
+          </div>
+          
+          <div class="db-editor-container">
+            <div class="db-editor-gutter" id="sql-gutter">
+              <div>1</div>
+            </div>
+            <textarea id="sql-editor" class="db-editor-textarea" placeholder="-- Enter SQL query here
+SELECT * FROM creature_template WHERE entry = 1;" spellcheck="false"></textarea>
+          </div>
+          
+          <!-- Query Results -->
+          <div class="db-results-panel">
+            <div class="db-results-header">
+              <h4>Results</h4>
+              <span id="sql-result-info" class="text-sm text-dark-text-muted"></span>
+              <div class="flex-1"></div>
+              <button id="sql-export-btn" class="btn-wow text-xs px-2 py-1" disabled>Export CSV</button>
+            </div>
+            <div id="sql-results" class="db-results-content">
+              <p class="text-dark-text-muted text-sm p-4">Execute a query to see results</p>
+            </div>
+          </div>
+        </div>
+        
+        <!-- Table Editor Subtab -->
+        <div id="db-table-editor" class="db-subtab-content hidden">
+          <div class="db-table-toolbar">
+            <span class="text-dark-text-muted">Select a table from the sidebar to edit</span>
+            <div class="flex-1"></div>
+            <button id="table-refresh-btn" class="btn-wow" disabled title="Refresh table data">⟳ Refresh</button>
+            <button id="table-add-row-btn" class="btn-wow" disabled>+ Add Row</button>
+            <button id="table-delete-row-btn" class="btn-wow-danger" disabled>Delete Row</button>
+            <button id="table-save-btn" class="btn-wow-success" disabled>Save Changes</button>
+          </div>
+          <div id="table-editor-content" class="db-table-content">
+            <p class="text-dark-text-muted text-sm p-4">Select a table to view and edit data</p>
+          </div>
+          <div id="table-pagination" class="db-pagination hidden">
+            <button class="btn-wow text-xs px-2 py-1" id="table-prev-page">← Prev</button>
+            <span id="table-page-info" class="text-sm text-dark-text-muted">Page 1 of 1</span>
+            <button class="btn-wow text-xs px-2 py-1" id="table-next-page">Next →</button>
+          </div>
+        </div>
+        
+        <!-- Entity Editor Subtab -->
+        <div id="db-entity-editor" class="db-subtab-content hidden">
+          <div class="db-entity-selector">
+            <label class="mr-4">
+              <span class="text-dark-text-muted text-sm">Entity Type</span>
+              <select id="entity-type" class="select-wow ml-2">
+                <option value="creature">Creature</option>
+                <option value="item">Item</option>
+                <option value="quest">Quest</option>
+                <option value="spell">Spell</option>
+                <option value="gameobject">Game Object</option>
+                <option value="npc">NPC Vendor</option>
+                <option value="loot">Loot Table</option>
+                <option value="smartai">SmartAI</option>
+              </select>
+            </label>
+            <label class="mr-4">
+              <span class="text-dark-text-muted text-sm">Entry/ID</span>
+              <input type="number" id="entity-id" class="input-wow ml-2 w-32" placeholder="Entry ID" />
+            </label>
+            <button id="entity-load-btn" class="btn-wow-primary">Load</button>
+            <button id="entity-new-btn" class="btn-wow ml-2">New</button>
+            <button id="entity-save-btn" class="btn-wow-success ml-2" disabled>Save</button>
+            <button id="entity-delete-btn" class="btn-wow-danger ml-2" disabled>Delete</button>
+          </div>
+          
+          <div id="entity-editor-content" class="db-entity-content">
+            <p class="text-dark-text-muted text-sm p-4">Select an entity type and enter an ID to edit</p>
+          </div>
+        </div>
+      </main>
+    </div>
+  </div>
+
+  <!-- ═════════════════════════════════════════════════════════ -->
+  <!-- TAB: Console                                            -->
   <div id="tab-console" class="tab-content">
     <div class="console-layout">
       <aside id="sidebar">
@@ -739,6 +911,6 @@
     </div>
   </div>
 
-  <script src="app.js"></script>
+  <script src="../dist/renderer.js"></script>
 </body>
 </html>

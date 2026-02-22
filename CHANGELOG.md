@@ -5,7 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.1.0] - 2026-02-12
+## [2.0.0] - 2026-02-22
+
+### Added
+
+- Database Editor feature with MySQL connection support for AzerothCore databases
+- Connect to auth, characters, and world databases with saved connection profiles
+- Browse database tables with pagination and column sorting
+- Edit records directly in the table with inline editing
+- Insert new rows and delete existing rows
+- Raw SQL query editor with result display
+- Transaction support for safe database operations
+
+### Changed
+
+- Migrated codebase from JavaScript to TypeScript for better type safety
+- Added Tailwind CSS for modern styling with utility classes
+- Updated build system with esbuild for faster TypeScript compilation
+- Improved code organization with proper type definitions
 
 ### Improved
 

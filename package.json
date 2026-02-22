@@ -1,32 +1,46 @@
 {
   "name": "wow-admin",
-  "version": "1.1.0",
-  "description": "Desktop admin tool for AzerothCore servers via SOAP",
-  "main": "src/main.js",
+  "version": "2.0.0",
+  "description": "Desktop admin tool for AzerothCore servers with SOAP and Database editing",
+  "main": "dist/main.js",
   "scripts": {
-    "start": "electron .",
-    "dev": "electron . --dev",
-    "build": "electron-builder",
-    "build:win": "electron-builder --win",
-    "build:mac": "electron-builder --mac",
-    "build:linux": "electron-builder --linux",
-    "build:all": "electron-builder --win --linux"
+    "build:ts": "node esbuild.config.js",
+    "build:ts:watch": "node esbuild.config.js --watch",
+    "build:css": "tailwindcss -i ./renderer/styles/tailwind.css -o ./renderer/styles/output.css",
+    "build:css:watch": "tailwindcss -i ./renderer/styles/tailwind.css -o ./renderer/styles/output.css --watch",
+    "start": "npm run build:ts && npm run build:css && electron .",
+    "dev": "npm run build:ts && npm run build:css && electron . --dev",
+    "build": "npm run build:ts && npm run build:css && electron-builder",
+    "build:win": "npm run build:ts && npm run build:css && electron-builder --win",
+    "build:mac": "npm run build:ts && npm run build:css && electron-builder --mac",
+    "build:linux": "npm run build:ts && npm run build:css && electron-builder --linux",
+    "build:all": "npm run build:ts && npm run build:css && electron-builder --win --linux",
+    "typecheck": "tsc --noEmit"
   },
   "keywords": [
     "azerothcore",
     "wow",
     "soap",
     "admin",
-    "azerothcore-tools"
+    "azerothcore-tools",
+    "database-editor"
   ],
   "author": "scarecr0w12 <scarecr0w12@users.noreply.github.com>",
   "homepage": "https://github.com/scarecr0w12/wowmin",
   "license": "MIT",
   "devDependencies": {
+    "@types/node": "^20.10.0",
+    "@types/xml2js": "^0.4.14",
+    "autoprefixer": "^10.4.16",
     "electron": "^33.0.0",
-    "electron-builder": "^25.1.8"
+    "electron-builder": "^25.1.8",
+    "esbuild": "^0.19.0",
+    "postcss": "^8.4.32",
+    "tailwindcss": "^3.4.0",
+    "typescript": "^5.3.0"
   },
   "dependencies": {
+    "mysql2": "^3.6.0",
     "xml2js": "^0.6.2"
   },
   "build": {
@@ -36,7 +50,7 @@
       "output": "dist"
     },
     "files": [
-      "src/**/*",
+      "dist/**/*",
       "renderer/**/*",
       "assets/**/*",
       "package.json"

@@ -1,0 +1,225 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Custom base styles for dark theme */
+@layer base {
+  html {
+    @apply bg-dark-bg text-dark-text;
+  }
+  
+  body {
+    @apply font-sans antialiased;
+  }
+
+  /* Custom scrollbar for dark theme */
+  ::-webkit-scrollbar {
+    @apply w-2 h-2;
+  }
+
+  ::-webkit-scrollbar-track {
+    @apply bg-dark-bg-secondary;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    @apply bg-dark-border rounded;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-dark-text-muted;
+  }
+}
+
+/* Custom component styles */
+@layer components {
+  /* WoW-style button */
+  .btn-wow {
+    @apply px-4 py-2 rounded font-semibold transition-all duration-200;
+    @apply bg-gradient-to-b from-[#4a4a4a] to-[#2a2a2a];
+    @apply border border-[#5a5a5a] border-b-[#1a1a1a];
+    @apply text-wow-gold hover:text-white;
+    @apply hover:from-[#5a5a5a] hover:to-[#3a3a3a];
+    @apply active:from-[#3a3a3a] active:to-[#2a2a2a];
+    @apply disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+
+  .btn-wow-primary {
+    @apply btn-wow;
+    @apply from-wow-blue to-wow-blue-dark;
+    @apply border-wow-blue border-b-wow-blue-dark;
+    @apply text-white;
+    @apply hover:from-wow-blue hover:to-wow-blue;
+  }
+
+  .btn-wow-success {
+    @apply btn-wow;
+    @apply from-wow-green to-wow-green-dark;
+    @apply border-wow-green border-b-wow-green-dark;
+    @apply text-dark-bg;
+    @apply hover:from-wow-green hover:to-wow-green;
+  }
+
+  .btn-wow-danger {
+    @apply btn-wow;
+    @apply from-wow-red to-wow-red-dark;
+    @apply border-wow-red border-b-wow-red-dark;
+    @apply text-white;
+    @apply hover:from-wow-red hover:to-wow-red;
+  }
+
+  /* WoW-style input */
+  .input-wow {
+    @apply w-full px-3 py-2 rounded;
+    @apply bg-dark-bg-secondary border border-dark-border;
+    @apply text-dark-text placeholder-dark-text-muted;
+    @apply focus:outline-none focus:border-wow-gold focus:ring-1 focus:ring-wow-gold/50;
+    @apply disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+
+  /* WoW-style select */
+  .select-wow {
+    @apply input-wow appearance-none cursor-pointer;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%239D9D9D'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 0.5rem center;
+    background-size: 1.5em 1.5em;
+    padding-right: 2.5rem;
+  }
+
+  /* WoW-style panel/card */
+  .panel-wow {
+    @apply bg-dark-bg-secondary border border-dark-border rounded-lg;
+    @apply shadow-lg;
+  }
+
+  /* WoW-style table */
+  .table-wow {
+    @apply w-full border-collapse;
+  }
+
+  .table-wow th {
+    @apply px-4 py-2 text-left text-wow-gold font-semibold;
+    @apply bg-dark-bg-tertiary border-b border-dark-border;
+  }
+
+  .table-wow td {
+    @apply px-4 py-2 border-b border-dark-border/50;
+  }
+
+  .table-wow tr:hover td {
+    @apply bg-dark-bg-tertiary/50;
+  }
+
+  /* Tab styles */
+  .tab-wow {
+    @apply px-4 py-2 font-semibold transition-all duration-200;
+    @apply text-dark-text-muted border-b-2 border-transparent;
+    @apply hover:text-dark-text hover:border-dark-border;
+  }
+
+  .tab-wow-active {
+    @apply tab-wow;
+    @apply text-wow-gold border-wow-gold;
+  }
+
+  /* Sidebar navigation */
+  .nav-item {
+    @apply flex items-center gap-3 px-4 py-2 rounded;
+    @apply text-dark-text-muted transition-all duration-200;
+    @apply hover:bg-dark-bg-tertiary hover:text-dark-text;
+  }
+
+  .nav-item-active {
+    @apply nav-item;
+    @apply bg-dark-bg-tertiary text-wow-gold;
+  }
+
+  /* Badge styles */
+  .badge {
+    @apply inline-flex items-center px-2 py-0.5 rounded text-xs font-medium;
+  }
+
+  .badge-common {
+    @apply badge bg-wow-common/20 text-wow-common;
+  }
+
+  .badge-uncommon {
+    @apply badge bg-wow-uncommon/20 text-wow-uncommon;
+  }
+
+  .badge-rare {
+    @apply badge bg-wow-rare/20 text-wow-rare;
+  }
+
+  .badge-epic {
+    @apply badge bg-wow-epic/20 text-wow-epic;
+  }
+
+  .badge-legendary {
+    @apply badge bg-wow-legendary/20 text-wow-legendary;
+  }
+
+  /* Code/SQL editor styles */
+  .editor-container {
+    @apply relative w-full h-full;
+  }
+
+  .editor-gutter {
+    @apply bg-dark-bg-tertiary text-dark-text-muted text-right pr-2 select-none;
+    @apply font-mono text-sm leading-6;
+  }
+
+  .editor-content {
+    @apply bg-dark-bg font-mono text-sm leading-6 p-2;
+    @apply focus:outline-none;
+    @apply whitespace-pre overflow-auto;
+  }
+
+  /* Syntax highlighting */
+  .syntax-keyword {
+    @apply text-wow-purple;
+  }
+
+  .syntax-string {
+    @apply text-wow-green;
+  }
+
+  .syntax-number {
+    @apply text-wow-orange;
+  }
+
+  .syntax-comment {
+    @apply text-dark-text-muted italic;
+  }
+
+  .syntax-function {
+    @apply text-wow-blue;
+  }
+
+  .syntax-operator {
+    @apply text-wow-gold;
+  }
+}
+
+/* Utility classes */
+@layer utilities {
+  .text-shadow-wow {
+    text-shadow: 0 0 10px currentColor;
+  }
+
+  .glow-gold {
+    box-shadow: 0 0 10px rgba(255, 209, 0, 0.3);
+  }
+
+  .glow-blue {
+    box-shadow: 0 0 10px rgba(0, 112, 221, 0.3);
+  }
+
+  .glow-green {
+    box-shadow: 0 0 10px rgba(15, 252, 0, 0.3);
+  }
+
+  .glow-purple {
+    box-shadow: 0 0 10px rgba(163, 53, 238, 0.3);
+  }
+}
