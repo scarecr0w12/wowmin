@@ -771,7 +771,7 @@ function formatPinfo(msg: string): string {
 }
 
 function enrichPlayerFromPinfo(charname: string, msg: string): void {
-  const levelMatch = msg.match(/^\s*Level:\s*(\d+)/im);
+  const levelMatch = msg.match(/(?<!\w)Level:\s*(\d+)/i);
   const raceClassMatch = msg.match(/Race:\s*((?:Female|Male)\s+)?(.+?),\s+(\S+)/i);
   if (!levelMatch && !raceClassMatch) return;
 

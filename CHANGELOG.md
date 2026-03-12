@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- Player list now correctly displays level, race, and class for all online players — previously these always showed as empty/0 because `account onlinelist` does not include that data. The list now batch-fetches `pinfo` for each player on load so all columns are populated immediately. Fixed a secondary bug where the level regex matched `GMLevel: 0` instead of `Level: 13` in the pinfo output, always showing 0.
+- Player list now correctly displays level, race, and class for all online players — previously these always showed as empty/0 because `account onlinelist` does not include that data. The list now batch-fetches `pinfo` for each player on load so all columns are populated immediately. Fixed level regex to use a negative lookbehind (`(?<!\\w)Level:`) instead of a line anchor, correctly matching `Level: 80` while ignoring `GMLevel: 0` regardless of leading pipe/box-drawing prefix characters in the raw pinfo output.
 
 ## [2.0.0] - 2026-02-22
 
