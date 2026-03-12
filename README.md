@@ -36,6 +36,7 @@ and direct database access.
 
 ### Player Management
 - View online players with filtering and search
+- Player level, race, and class populated automatically on list load
 - Player details and moderation actions
 - Kick, ban, mute, freeze, and more
 

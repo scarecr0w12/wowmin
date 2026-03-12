@@ -763,35 +763,80 @@ SELECT * FROM creature_template WHERE entry = 1;" spellcheck="false"></textarea>
         
         <!-- Entity Editor Subtab -->
         <div id="db-entity-editor" class="db-subtab-content hidden">
+          <!-- Selector / action bar -->
           <div class="db-entity-selector">
-            <label class="mr-4">
-              <span class="text-dark-text-muted text-sm">Entity Type</span>
-              <select id="entity-type" class="select-wow ml-2">
-                <option value="creature">Creature</option>
-                <option value="item">Item</option>
+            <label style="display:flex;flex-direction:column;gap:4px;">
+              <span style="font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;">Entity Type</span>
+              <select id="entity-type" class="select-wow" style="min-width:160px;">
+                <option value="creature">Creature Template</option>
+                <option value="item">Item Template</option>
                 <option value="quest">Quest</option>
-                <option value="spell">Spell</option>
+                <option value="spell">Spell DBC</option>
                 <option value="gameobject">Game Object</option>
                 <option value="npc">NPC Vendor</option>
-                <option value="loot">Loot Table</option>
-                <option value="smartai">SmartAI</option>
+                <option value="loot">Creature Loot</option>
+                <option value="smartai">SmartAI Scripts</option>
               </select>
             </label>
-            <label class="mr-4">
-              <span class="text-dark-text-muted text-sm">Entry/ID</span>
-              <input type="number" id="entity-id" class="input-wow ml-2 w-32" placeholder="Entry ID" />
+
+            <!-- Search by name -->
+            <div class="entity-search-wrap">
+              <span class="entity-search-label">Search by Name</span>
+              <input type="text" id="entity-search" placeholder="Type to search..." autocomplete="off" />
+              <div id="entity-search-results" class="entity-search-dropdown hidden"></div>
+            </div>
+
+            <label style="display:flex;flex-direction:column;gap:4px;">
+              <span style="font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;">Entry / ID</span>
+              <input type="number" id="entity-id" class="input-wow" style="width:110px;" placeholder="Entry ID" />
             </label>
-            <button id="entity-load-btn" class="btn-wow-primary">Load</button>
-            <button id="entity-new-btn" class="btn-wow ml-2">New</button>
-            <button id="entity-save-btn" class="btn-wow-success ml-2" disabled>Save</button>
-            <button id="entity-delete-btn" class="btn-wow-danger ml-2" disabled>Delete</button>
+
+            <div class="entity-actions">
+              <button id="entity-load-btn" class="btn-wow-primary">Load</button>
+              <button id="entity-new-btn" class="btn-wow">New</button>
+              <button id="entity-save-btn" class="btn-wow-success" disabled>Save</button>
+              <button id="entity-delete-btn" class="btn-wow-danger" disabled>Delete</button>
+            </div>
           </div>
-          
-          <div id="entity-editor-content" class="db-entity-content">
-            <p class="text-dark-text-muted text-sm p-4">Select an entity type and enter an ID to edit</p>
+
+          <!-- Form + SQL panel stacked -->
+          <div class="entity-split-layout">
+            <div id="entity-editor-content" class="db-entity-content">
+              <p class="text-dark-text-muted text-sm p-4">Select an entity type and enter an ID to edit</p>
+            </div>
+
+            <!-- SQL generation panel (Keira3-style) -->
+            <div id="entity-sql-panel" class="entity-sql-panel">
+              <div class="entity-sql-header">
+                <div class="entity-sql-tabs">
+                  <button class="entity-sql-tab active" data-sqltab="diff">Diff Query</button>
+                  <button class="entity-sql-tab" data-sqltab="full">Full Query</button>
+                </div>
+                <div class="entity-sql-actions">
+                  <button id="entity-copy-sql-btn" class="btn-wow text-xs px-2 py-1">Copy SQL</button>
+                  <button id="entity-apply-sql-btn" class="btn-wow-primary text-xs px-2 py-1" disabled>Execute SQL</button>
+                </div>
+              </div>
+              <pre id="entity-sql-code" class="entity-sql-code">-- Load an entity to generate SQL</pre>
+            </div>
           </div>
         </div>
       </main>
+    </div>
+  </div>
+
+  <!-- Flags selector overlay (shared) -->
+  <div id="flags-overlay" class="flags-overlay hidden">
+    <div class="flags-dialog">
+      <div class="flags-dialog-title">
+        <span id="flags-dialog-title-text">Select Flags</span>
+        <span class="flags-dialog-currentval">Value: <code id="flags-current-val">0</code></span>
+      </div>
+      <div id="flags-grid" class="flags-grid"></div>
+      <div class="flags-dialog-actions">
+        <button id="flags-cancel-btn" class="btn-wow">Cancel</button>
+        <button id="flags-apply-btn" class="btn-wow-primary">Apply</button>
+      </div>
     </div>
   </div>
 

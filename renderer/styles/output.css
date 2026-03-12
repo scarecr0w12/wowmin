@@ -1044,12 +1044,29 @@ body {
 
 /* Badge styles */
 
+.badge {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 0.25rem;
+  padding-left: 0.5rem;
+  padding-right: 0.5rem;
+  padding-top: 0.125rem;
+  padding-bottom: 0.125rem;
+  font-size: 0.75rem;
+  line-height: 1rem;
+  font-weight: 500;
+}
+
 /* Code/SQL editor styles */
 
 /* Syntax highlighting */
 
 .visible {
   visibility: visible;
+}
+
+.invisible {
+  visibility: hidden;
 }
 
 .mb-2 {
@@ -1060,16 +1077,8 @@ body {
   margin-bottom: 0.75rem;
 }
 
-.mb-4 {
-  margin-bottom: 1rem;
-}
-
-.ml-2 {
-  margin-left: 0.5rem;
-}
-
-.mr-4 {
-  margin-right: 1rem;
+.ml-4 {
+  margin-left: 1rem;
 }
 
 .mt-1 {
@@ -1104,12 +1113,12 @@ body {
   display: table;
 }
 
-.hidden {
-  display: none;
+.grid {
+  display: grid;
 }
 
-.w-32 {
-  width: 8rem;
+.hidden {
+  display: none;
 }
 
 .flex-1 {

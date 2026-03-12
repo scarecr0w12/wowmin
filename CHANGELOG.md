@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.1] - 2026-03-12
+
+### Fixed
+
+- Player list now correctly displays level, race, and class for all online players — previously these always showed as empty/0 because `account onlinelist` does not include that data. The list now batch-fetches `pinfo` for each player on load so all columns are populated immediately. Fixed a secondary bug where the level regex matched `GMLevel: 0` instead of `Level: 13` in the pinfo output, always showing 0.
+
 ## [2.0.0] - 2026-02-22
 
 ### Added
