@@ -32,6 +32,9 @@ jobs:
 
       - run: npm ci
 
+      - name: Build TypeScript & CSS
+        run: npm run build:ts && npm run build:css
+
       - name: Build Electron app
         run: npx electron-builder ${{ matrix.build_flags }} --publish never
 
