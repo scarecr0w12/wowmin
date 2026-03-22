@@ -44,6 +44,7 @@
     <button class="tab" data-tab="accounts">⚙ Accounts</button>
     <button class="tab" data-tab="tickets">✉ Tickets</button>
     <button class="tab" data-tab="database">🗄 Database</button>
+    <button class="tab" data-tab="map">🗺 Live Map</button>
     <button class="tab" data-tab="console">▸ Console</button>
   </nav>
 
@@ -940,6 +941,99 @@ SELECT * FROM creature_template WHERE entry = 1;" spellcheck="false"></textarea>
           <button type="submit" class="btn btn-send" disabled>Send</button>
         </form>
       </section>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════ -->
+  <!-- TAB: Live Map                                          -->
+  <!-- ═══════════════════════════════════════════════════════ -->
+  <div id="tab-map" class="tab-content">
+    <div class="map-layout">
+
+      <!-- Sidebar: DB connection + player list -->
+      <aside class="map-sidebar">
+        <div class="card">
+          <div class="card-header"><h3>Characters DB</h3></div>
+          <div class="card-body">
+            <div class="form-stack">
+              <label>Host<input type="text" id="map-db-host" value="127.0.0.1" /></label>
+              <label>Port<input type="number" id="map-db-port" value="3306" /></label>
+              <label>User<input type="text" id="map-db-user" value="acore" /></label>
+              <label>Password<input type="password" id="map-db-pass" /></label>
+              <label>Database<input type="text" id="map-db-name" value="acore_characters" /></label>
+              <div class="btn-row" style="margin-top:8px">
+                <button id="map-db-connect-btn" class="btn btn-accent">Connect</button>
+                <button id="map-db-disconnect-btn" class="btn" disabled>Disconnect</button>
+              </div>
+              <div id="map-db-status" class="action-result"></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card" style="margin-top:10px">
+          <div class="card-header"><h3>Options</h3></div>
+          <div class="card-body" style="display:flex;flex-direction:column;gap:8px">
+            <label class="auto-refresh-toggle">
+              <input type="checkbox" id="map-auto-refresh" /> Auto (5 s)
+            </label>
+            <label class="filter-label">Show
+              <select id="map-filter-type">
+                <option value="all">All</option>
+                <option value="real" selected>Players Only</option>
+                <option value="bots">Bots Only</option>
+              </select>
+            </label>
+          </div>
+        </div>
+
+        <div class="card map-player-list-card">
+          <div class="card-header"><h3>On This Map</h3></div>
+          <div id="map-player-list" class="map-player-list-body">
+            <p class="placeholder">No players</p>
+          </div>
+        </div>
+      </aside>
+
+      <!-- Main: continent selector + canvas -->
+      <div class="map-main">
+        <div class="map-continent-bar">
+          <button class="map-continent-btn active" data-continent="0">Eastern Kingdoms</button>
+          <button class="map-continent-btn" data-continent="1">Kalimdor</button>
+          <button class="map-continent-btn" data-continent="530">Outland</button>
+          <button class="map-continent-btn" data-continent="571">Northrend</button>
+        </div>
+        <div class="map-canvas-wrapper">
+          <canvas id="map-canvas"></canvas>
+          <div id="map-tooltip" class="map-tooltip hidden"></div>
+        </div>
+
+        <!-- Selected player panel -->
+        <div id="map-selected-panel" class="map-selected-panel hidden">
+          <div class="map-sel-info">
+            <span id="map-sel-name" class="map-sel-name"></span>
+            <span id="map-sel-badge"></span>
+            <span id="map-sel-details" class="map-sel-details"></span>
+            <span id="map-sel-coords" class="map-sel-coords"></span>
+          </div>
+          <div class="map-sel-actions">
+            <button class="btn btn-tiny map-action-btn" data-map-action="pinfo">&#8505; Info</button>
+            <button class="btn btn-tiny map-action-btn" data-map-action="freeze">&#10052; Freeze</button>
+            <button class="btn btn-tiny map-action-btn" data-map-action="unfreeze">&#128275; Unfreeze</button>
+            <button class="btn btn-tiny map-action-btn" data-map-action="summon">&#128205; Summon</button>
+            <button class="btn btn-tiny map-action-btn" data-map-action="kick">&#128082; Kick</button>
+            <button class="btn btn-tiny map-action-btn btn-danger-action" data-map-action="ban account">&#128683; Ban</button>
+          </div>
+          <span id="map-action-result" class="action-result" style="font-size:11px;flex-shrink:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:180px"></span>
+          <button id="map-deselect-btn" class="btn btn-tiny" title="Deselect">&times;</button>
+        </div>
+
+        <div class="map-statusbar">
+          <span id="map-status-text">Connect to the characters database to view live positions</span>
+          <span id="map-player-count" class="map-status-count"></span>
+          <button class="btn btn-tiny btn-refresh" id="map-refresh-btn" title="Refresh now">⟳</button>
+        </div>
+      </div>
+
     </div>
   </div>
 

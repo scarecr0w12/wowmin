@@ -1,5 +1,6 @@
 /// <reference path="./types/window.d.ts" />
 import { ts, escapeHtml, showResult, debounce, getMapName, getZoneName, CLASS_COLORS, RACE_ICONS, RACE_NAMES, CLASS_NAMES } from './utils/helpers';
+import { CONTINENT_BOUNDS, worldToCanvas } from './utils/map-coords';
 import { AppState, createInitialState, PlayerInfo } from './types/state';
 
 // ── Application State ────────────────────────────────────────────────────
@@ -2462,3 +2463,466 @@ document.getElementById('table-next-page')?.addEventListener('click', () => {
 // Export for debugging
 (window as unknown as Record<string, unknown>).appState = state;
 (window as unknown as Record<string, unknown>).dbState = dbState;
+
+// ═══════════════════════════════════════════════════════════════════════════
+// LIVE MAP TAB
+// ═══════════════════════════════════════════════════════════════════════════
+
+interface MapPlayerPosition {
+  name: string;
+  map: number;
+  position_x: number;
+  position_y: number;
+  level: number;
+  race: number;
+  class: number;
+  account: string;
+}
+
+// ── DOM references ─────────────────────────────────────────────────────────
+const $mapDbConnectBtn    = $<HTMLButtonElement>('map-db-connect-btn');
+const $mapDbDisconnectBtn = $<HTMLButtonElement>('map-db-disconnect-btn');
+const $mapDbStatus        = $<HTMLElement>('map-db-status');
+const $mapCanvas          = $<HTMLCanvasElement>('map-canvas');
+const $mapTooltip         = $<HTMLElement>('map-tooltip');
+const $mapStatusText      = $<HTMLElement>('map-status-text');
+const $mapPlayerCount     = $<HTMLElement>('map-player-count');
+const $mapPlayerList      = $<HTMLElement>('map-player-list');
+const $mapAutoRefresh     = $<HTMLInputElement>('map-auto-refresh');
+const $mapFilterType      = $<HTMLSelectElement>('map-filter-type');
+const $mapRefreshBtn      = $<HTMLButtonElement>('map-refresh-btn');
+
+let mapAllPlayers: MapPlayerPosition[] = [];
+const mapImageCache = new Map<number, HTMLImageElement | 'failed'>();
+let mapSelectedPlayerName: string | null = null;
+
+// ── Image preloading ───────────────────────────────────────────────────────
+function preloadMapImage(mapId: number): void {
+  if (mapImageCache.has(mapId)) return;
+  const img = new Image();
+  img.onload  = () => { mapImageCache.set(mapId, img); if (state.mapSelectedContinent === mapId) renderMapCanvas(); };
+  img.onerror = () => { mapImageCache.set(mapId, 'failed'); };
+  // Relative to renderer/index.html  →  wow-admin/assets/maps/<id>.jpg
+  img.src = `../assets/maps/${mapId}.jpg`;
+}
+
+// ── Filtering ──────────────────────────────────────────────────────────────
+function getMapFilteredPlayers(): MapPlayerPosition[] {
+  const filterVal = $mapFilterType?.value || 'real';
+  const continent = state.mapSelectedContinent;
+  return mapAllPlayers.filter((p) => {
+    if (p.map !== continent) return false;
+    const isBot = /^RNDBOT/i.test(p.account);
+    if (filterVal === 'real' && isBot) return false;
+    if (filterVal === 'bots' && !isBot) return false;
+    return true;
+  });
+}
+
+// ── DB connection ──────────────────────────────────────────────────────────
+async function connectMapDb(): Promise<void> {
+  const host = $<HTMLInputElement>('map-db-host')?.value.trim() || '127.0.0.1';
+  const port = Number($<HTMLInputElement>('map-db-port')?.value.trim() || '3306');
+  const user = $<HTMLInputElement>('map-db-user')?.value.trim() || 'acore';
+  const pass = $<HTMLInputElement>('map-db-pass')?.value.trim() || '';
+  const db   = $<HTMLInputElement>('map-db-name')?.value.trim() || 'acore_characters';
+
+  if ($mapDbStatus) showResult($mapDbStatus, false, 'Connecting…');
+  if ($mapDbConnectBtn) $mapDbConnectBtn.disabled = true;
+
+  const result = await window.electronAPI.map.connect({ host, port, username: user, password: pass, database: db });
+
+  if (result.connected) {
+    state.mapDbConnected = true;
+    showResult($mapDbStatus, true, `Connected to ${db}`);
+    if ($mapDbDisconnectBtn) $mapDbDisconnectBtn.disabled = false;
+    if ($mapStatusText) $mapStatusText.textContent = 'Connected – polling player positions…';
+    await refreshMapPositions();
+  } else {
+    state.mapDbConnected = false;
+    showResult($mapDbStatus, false, result.error || 'Connection failed');
+    if ($mapDbConnectBtn) $mapDbConnectBtn.disabled = false;
+  }
+}
+
+async function disconnectMapDb(): Promise<void> {
+  await window.electronAPI.map.disconnect();
+  state.mapDbConnected = false;
+  stopMapAutoRefresh();
+  if ($mapAutoRefresh) $mapAutoRefresh.checked = false;
+  mapAllPlayers = [];
+  mapSelectedPlayerName = null;
+  renderMapCanvas();
+  renderMapPlayerList();
+  renderMapSelectedPanel();
+  if ($mapDbConnectBtn) $mapDbConnectBtn.disabled = false;
+  if ($mapDbDisconnectBtn) $mapDbDisconnectBtn.disabled = true;
+  showResult($mapDbStatus, false, 'Disconnected');
+  if ($mapStatusText) $mapStatusText.textContent = 'Connect to the characters database to view live positions';
+  if ($mapPlayerCount) $mapPlayerCount.textContent = '';
+}
+
+// ── Refresh ────────────────────────────────────────────────────────────────
+async function refreshMapPositions(): Promise<void> {
+  if (!state.mapDbConnected) return;
+  try {
+    mapAllPlayers = await window.electronAPI.map.getPlayerPositions();
+  } catch {
+    // transient error – keep last known positions
+  }
+  const shown = getMapFilteredPlayers().length;
+  if ($mapStatusText) $mapStatusText.textContent = `Last updated: ${new Date().toLocaleTimeString()}`;
+  if ($mapPlayerCount) $mapPlayerCount.textContent = `${shown} on this map`;
+  renderMapCanvas();
+  renderMapPlayerList();
+  renderMapSelectedPanel();
+}
+
+function startMapAutoRefresh(): void {
+  stopMapAutoRefresh();
+  state.mapInterval = setInterval(refreshMapPositions, 5000);
+}
+
+function stopMapAutoRefresh(): void {
+  if (state.mapInterval) { clearInterval(state.mapInterval); state.mapInterval = null; }
+}
+
+// ── Canvas rendering ───────────────────────────────────────────────────────
+function renderMapCanvas(): void {
+  if (!$mapCanvas) return;
+  const wrapper = $mapCanvas.parentElement;
+  if (!wrapper) return;
+
+  const rect = wrapper.getBoundingClientRect();
+  const W = Math.floor(rect.width)  || 800;
+  const H = Math.floor(rect.height) || 500;
+  $mapCanvas.width  = W;
+  $mapCanvas.height = H;
+
+  const ctx = $mapCanvas.getContext('2d');
+  if (!ctx) return;
+
+  const bounds = CONTINENT_BOUNDS[state.mapSelectedContinent];
+  if (!bounds) return;
+
+  // Background – use map image if available, else colour fill + guides
+  const cachedImg = mapImageCache.get(state.mapSelectedContinent);
+  const hasImage  = cachedImg && cachedImg !== 'failed';
+  if (hasImage) {
+    ctx.drawImage(cachedImg as HTMLImageElement, 0, 0, W, H);
+    // Slight darkening overlay so dots remain readable
+    ctx.fillStyle = 'rgba(0,0,0,0.28)';
+    ctx.fillRect(0, 0, W, H);
+  } else {
+    ctx.fillStyle = bounds.bgColor;
+    ctx.fillRect(0, 0, W, H);
+    // Subtle grid
+    ctx.strokeStyle = 'rgba(255,255,255,0.04)';
+    ctx.lineWidth = 1;
+    for (let i = 1; i < 10; i++) {
+      const gx = (W / 10) * i;
+      ctx.beginPath(); ctx.moveTo(gx, 0); ctx.lineTo(gx, H); ctx.stroke();
+      const gy = (H / 10) * i;
+      ctx.beginPath(); ctx.moveTo(0, gy); ctx.lineTo(W, gy); ctx.stroke();
+    }
+    // Watermark continent name
+    ctx.fillStyle = 'rgba(255,255,255,0.07)';
+    ctx.font = `bold ${Math.min(36, W / 12)}px sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.fillText(bounds.label, W / 2, H / 2 + 14);
+    ctx.textAlign = 'left';
+
+    if (!state.mapDbConnected) {
+      ctx.fillStyle = 'rgba(255,255,255,0.35)';
+      ctx.font = '13px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('Connect to the characters database to see live positions', W / 2, H / 2 + 52);
+      ctx.fillStyle = 'rgba(255,255,255,0.18)';
+      ctx.font = '11px sans-serif';
+      ctx.fillText('Tip: place map images at assets/maps/0.jpg · 1.jpg · 530.jpg · 571.jpg', W / 2, H / 2 + 72);
+      ctx.textAlign = 'left';
+      return;
+    }
+  }
+
+  if (!state.mapDbConnected) return;
+
+  const players = getMapFilteredPlayers();
+  const showLabels = players.length > 0 && players.length <= 30;
+
+  for (const p of players) {
+    const { x, y } = worldToCanvas(p.position_x, p.position_y, bounds, W, H);
+    const isBot     = /^RNDBOT/i.test(p.account);
+    const isSelected = p.name === mapSelectedPlayerName;
+    const dotColor  = isBot ? '#888' : (CLASS_COLORS[p.class] || '#4fc3f7');
+
+    // Selection ring (drawn first, behind dot)
+    if (isSelected) {
+      ctx.shadowBlur = 0;
+      ctx.beginPath();
+      ctx.arc(x, y, 14, 0, Math.PI * 2);
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 2.5;
+      ctx.stroke();
+    }
+
+    // Glow
+    ctx.shadowColor = isSelected ? '#ffffff' : dotColor;
+    ctx.shadowBlur  = isSelected ? 18 : 8;
+
+    // Outer coloured dot
+    ctx.beginPath();
+    ctx.arc(x, y, isSelected ? 9 : 7, 0, Math.PI * 2);
+    ctx.fillStyle = dotColor;
+    ctx.fill();
+
+    // Inner white highlight
+    ctx.shadowBlur = 0;
+    ctx.beginPath();
+    ctx.arc(x, y, 2.5, 0, Math.PI * 2);
+    ctx.fillStyle = '#fff';
+    ctx.fill();
+
+    // Name label
+    if (showLabels || isSelected) {
+      ctx.fillStyle = isSelected ? '#ffffff' : 'rgba(230,230,230,0.88)';
+      ctx.font = isSelected ? 'bold 12px sans-serif' : '11px sans-serif';
+      ctx.shadowColor = 'rgba(0,0,0,0.8)';
+      ctx.shadowBlur  = isSelected ? 3 : 2;
+      ctx.fillText(p.name, x + 12, y + 4);
+      ctx.shadowBlur = 0;
+    }
+  }
+  ctx.shadowBlur = 0;
+
+  if (players.length === 0) {
+    ctx.fillStyle = 'rgba(255,255,255,0.28)';
+    ctx.font = '13px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('No players on this continent', W / 2, H / 2 + 52);
+    ctx.textAlign = 'left';
+  }
+}
+
+// ── Sidebar player list ────────────────────────────────────────────────────
+function renderMapPlayerList(): void {
+  if (!$mapPlayerList) return;
+  const players = getMapFilteredPlayers();
+  if (players.length === 0) {
+    $mapPlayerList.innerHTML = '<p class="placeholder">No players on this continent</p>';
+    return;
+  }
+  let html = '';
+  for (const p of players) {
+    const isBot   = /^RNDBOT/i.test(p.account);
+    const color   = CLASS_COLORS[p.class] || '#ccc';
+    const clsName = CLASS_NAMES[p.class]  || '';
+    const isSel   = p.name === mapSelectedPlayerName;
+    html += `<div class="map-player-item${isBot ? ' map-player-bot' : ''}${isSel ? ' map-player-selected' : ''}" data-charname="${escapeHtml(p.name)}" title="${escapeHtml(p.name)} – ${escapeHtml(clsName)} lv${p.level}">
+      <span class="map-player-dot" style="background:${color}"></span>
+      <span class="map-player-name">${escapeHtml(p.name)}</span>
+      <span class="map-player-lvl">Lv${p.level}</span>
+    </div>`;
+  }
+  $mapPlayerList.innerHTML = html;
+}
+
+// ── Selected player panel ──────────────────────────────────────────────────
+function renderMapSelectedPanel(): void {
+  const panel = $<HTMLElement>('map-selected-panel');
+  if (!panel) return;
+
+  if (!mapSelectedPlayerName) { panel.classList.add('hidden'); return; }
+
+  const player = mapAllPlayers.find((p) => p.name === mapSelectedPlayerName);
+  if (!player) { panel.classList.add('hidden'); return; }
+
+  const nameEl    = $<HTMLElement>('map-sel-name');
+  const detailsEl = $<HTMLElement>('map-sel-details');
+  const coordsEl  = $<HTMLElement>('map-sel-coords');
+  const badgeEl   = $<HTMLElement>('map-sel-badge');
+
+  const isBot      = /^RNDBOT/i.test(player.account);
+  const raceName   = RACE_NAMES[player.race]   || `Race ${player.race}`;
+  const clsName    = CLASS_NAMES[player.class]  || `Class ${player.class}`;
+  const classColor = CLASS_COLORS[player.class] || 'var(--text)';
+  const mapLabel   = CONTINENT_BOUNDS[player.map]?.label || `Map ${player.map}`;
+
+  if (nameEl)    { nameEl.textContent = player.name; nameEl.style.color = classColor; }
+  if (badgeEl)   { badgeEl.innerHTML  = isBot ? '<span class="bot-badge">BOT</span>' : ''; }
+  if (detailsEl) { detailsEl.textContent = `Lv${player.level} ${raceName} ${clsName}`; }
+  if (coordsEl)  { coordsEl.textContent  = `${mapLabel} (${player.position_x.toFixed(0)}, ${player.position_y.toFixed(0)})`; }
+
+  panel.classList.remove('hidden');
+}
+
+// ── Canvas click → player selection ──────────────────────────────────────
+$mapCanvas?.addEventListener('click', (e) => {
+  if (!$mapCanvas) return;
+  const bounds = CONTINENT_BOUNDS[state.mapSelectedContinent];
+  if (!bounds) return;
+
+  const rect = $mapCanvas.getBoundingClientRect();
+  const mx = e.clientX - rect.left;
+  const my = e.clientY - rect.top;
+  const W = $mapCanvas.width;
+  const H = $mapCanvas.height;
+
+  let hit: MapPlayerPosition | null = null;
+  for (const p of getMapFilteredPlayers()) {
+    const { x, y } = worldToCanvas(p.position_x, p.position_y, bounds, W, H);
+    const dx = mx - x, dy = my - y;
+    if (dx * dx + dy * dy < 196) { hit = p; break; } // 14 px radius
+  }
+
+  mapSelectedPlayerName = hit ? (mapSelectedPlayerName === hit.name ? null : hit.name) : null;
+  const resultEl = $<HTMLElement>('map-action-result');
+  if (resultEl) { resultEl.textContent = ''; resultEl.className = 'action-result'; }
+  renderMapCanvas();
+  renderMapPlayerList();
+  renderMapSelectedPanel();
+});
+
+// ── Sidebar list click → select ───────────────────────────────────────────
+$mapPlayerList?.addEventListener('click', (e) => {
+  const item = (e.target as HTMLElement).closest<HTMLElement>('[data-charname]');
+  if (!item) return;
+  const name = item.dataset.charname ?? null;
+  mapSelectedPlayerName = mapSelectedPlayerName === name ? null : name;
+  const resultEl = $<HTMLElement>('map-action-result');
+  if (resultEl) { resultEl.textContent = ''; resultEl.className = 'action-result'; }
+  renderMapCanvas();
+  renderMapPlayerList();
+  renderMapSelectedPanel();
+});
+
+// ── Selection panel SOAP actions ───────────────────────────────────────────
+$('map-selected-panel')?.addEventListener('click', async (e) => {
+  const btn = (e.target as HTMLElement).closest<HTMLButtonElement>('[data-map-action]');
+  if (!btn || !mapSelectedPlayerName) return;
+  const action = btn.dataset.mapAction ?? '';
+  const resultEl = $<HTMLElement>('map-action-result');
+  if (!state.connected) {
+    if (resultEl) showResult(resultEl, false, 'SOAP not connected');
+    return;
+  }
+  const n = mapSelectedPlayerName;
+  const cmdMap: Record<string, string> = {
+    'pinfo':       `pinfo ${n}`,
+    'freeze':      `freeze ${n}`,
+    'unfreeze':    `unfreeze ${n}`,
+    'kick':        `kick ${n}`,
+    'ban account': `ban account ${n} 0 Admin action`,
+    'summon':      `summon ${n}`,
+  };
+  const cmd = cmdMap[action];
+  if (!cmd) return;
+  btn.disabled = true;
+  const r = await exec(cmd);
+  btn.disabled = false;
+  if (resultEl) showResult(resultEl, r.success, r.message.substring(0, 100) || '(done)');
+  logActivity(cmd, r.message || '(done)', r.success);
+});
+
+// ── Deselect button ────────────────────────────────────────────────────────
+$('map-deselect-btn')?.addEventListener('click', () => {
+  mapSelectedPlayerName = null;
+  renderMapCanvas();
+  renderMapPlayerList();
+  renderMapSelectedPanel();
+});
+
+// ── Tooltip on hover ───────────────────────────────────────────────────────
+$mapCanvas?.addEventListener('mousemove', (e) => {
+  if (!$mapTooltip || !$mapCanvas) return;
+  const bounds = CONTINENT_BOUNDS[state.mapSelectedContinent];
+  if (!bounds) return;
+
+  const rect = $mapCanvas.getBoundingClientRect();
+  const mx = e.clientX - rect.left;
+  const my = e.clientY - rect.top;
+  const W = $mapCanvas.width;
+  const H = $mapCanvas.height;
+
+  let hit: MapPlayerPosition | null = null;
+  for (const p of getMapFilteredPlayers()) {
+    const { x, y } = worldToCanvas(p.position_x, p.position_y, bounds, W, H);
+    const dx = mx - x, dy = my - y;
+    if (dx * dx + dy * dy < 100) { hit = p; break; }
+  }
+
+  if (hit) {
+    const isBot     = /^RNDBOT/i.test(hit.account);
+    const raceName  = RACE_NAMES[hit.race]  || `Race ${hit.race}`;
+    const clsName   = CLASS_NAMES[hit.class] || `Class ${hit.class}`;
+    $mapTooltip.innerHTML =
+      `<div class="map-tooltip-name">${escapeHtml(hit.name)}</div>` +
+      `<div>Level ${hit.level} ${escapeHtml(raceName)} ${escapeHtml(clsName)}</div>` +
+      `<div style="color:var(--text-muted);font-size:11px">(${hit.position_x.toFixed(0)}, ${hit.position_y.toFixed(0)})</div>` +
+      (isBot ? '<div class="map-tooltip-bot">BOT</div>' : '');
+    // Keep tooltip inside canvas bounds
+    const tw = 160, th = 72;
+    const tx = mx + 14 + tw > W ? mx - tw - 6 : mx + 14;
+    const ty = my - 10 < 0 ? my + 10 : my - 10;
+    $mapTooltip.style.left = `${tx}px`;
+    $mapTooltip.style.top  = `${ty}px`;
+    $mapTooltip.classList.remove('hidden');
+    $mapCanvas.style.cursor = 'crosshair';
+  } else {
+    $mapTooltip.classList.add('hidden');
+    $mapCanvas.style.cursor = 'default';
+  }
+});
+
+$mapCanvas?.addEventListener('mouseleave', () => {
+  $mapTooltip?.classList.add('hidden');
+});
+
+// ── Continent selector ─────────────────────────────────────────────────────
+$$<HTMLButtonElement>('.map-continent-btn').forEach((btn) => {
+  btn.addEventListener('click', () => {
+    $$<HTMLButtonElement>('.map-continent-btn').forEach((b) => b.classList.remove('active'));
+    btn.classList.add('active');
+    state.mapSelectedContinent = Number(btn.dataset.continent ?? '0');
+    preloadMapImage(state.mapSelectedContinent);
+    mapSelectedPlayerName = null;
+    if ($mapPlayerCount) $mapPlayerCount.textContent = `${getMapFilteredPlayers().length} on this map`;
+    renderMapCanvas();
+    renderMapPlayerList();
+    renderMapSelectedPanel();
+  });
+});
+
+// ── Control handlers ───────────────────────────────────────────────────────
+$mapDbConnectBtn?.addEventListener('click', connectMapDb);
+$mapDbDisconnectBtn?.addEventListener('click', disconnectMapDb);
+$mapRefreshBtn?.addEventListener('click', refreshMapPositions);
+
+$mapAutoRefresh?.addEventListener('change', () => {
+  if ($mapAutoRefresh.checked) startMapAutoRefresh(); else stopMapAutoRefresh();
+});
+
+$mapFilterType?.addEventListener('change', () => {
+  if ($mapPlayerCount) $mapPlayerCount.textContent = `${getMapFilteredPlayers().length} on this map`;
+  renderMapCanvas();
+  renderMapPlayerList();
+  renderMapSelectedPanel();
+});
+
+// Re-render canvas when switching to the map tab (size was 0 while hidden)
+document.querySelector<HTMLButtonElement>('[data-tab="map"]')?.addEventListener('click', () => {
+  // Preload images for all continents on first visit
+  Object.keys(CONTINENT_BOUNDS).forEach((id) => preloadMapImage(Number(id)));
+  requestAnimationFrame(() => renderMapCanvas());
+});
+
+// ResizeObserver keeps canvas sized correctly while the tab is visible
+const _mapResizeObserver = new ResizeObserver(() => {
+  if (document.getElementById('tab-map')?.classList.contains('active')) renderMapCanvas();
+});
+const _mapWrapper = document.querySelector('.map-canvas-wrapper');
+if (_mapWrapper) _mapResizeObserver.observe(_mapWrapper);
+
+// Initial blank render
+renderMapCanvas();
+

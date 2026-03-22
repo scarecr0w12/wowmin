@@ -29,6 +29,17 @@ and direct database access.
 - **Query History** - Track and re-run previous queries
 - **Export to CSV** - Export query results to clipboard
 
+### Live Map (New!)
+- Real-time canvas map showing all online player positions
+- Continent switcher: Eastern Kingdoms, Kalimdor, Outland, Northrend
+- Player dots colour-coded by WoW class; bot accounts dimmed
+- **Click a dot or sidebar row to select a player** — shows name, level, race, class, and live coordinates
+- Quick SOAP actions from the selection panel: Info, Freeze, Unfreeze, Summon, Kick, Ban
+- Hover tooltip with player details
+- Auto-refresh (5 s) with manual refresh; filter by real players, bots, or all
+- Optional map image backgrounds: place `0.jpg`, `1.jpg`, `530.jpg`, `571.jpg` in `assets/maps/` (see `assets/maps/README.txt`)
+- Requires a separate database connection to `acore_characters`
+
 ### Dashboard
 - Server info at a glance (uptime, online players, peak)
 - Quick actions for common server operations
@@ -110,6 +121,14 @@ npm start
 3. Enter the entry/ID and click **Load**.
 4. Edit fields and click **Save** to commit changes.
 
+### Live Map
+1. Navigate to the **Live Map** tab.
+2. Enter the `acore_characters` MySQL connection details in the map connection bar and click **Connect**.
+3. Players on the selected continent appear as coloured dots (class colours) on the canvas.
+4. Use the continent buttons to switch between Eastern Kingdoms, Kalimdor, Outland, and Northrend.
+5. **Click a dot** or a row in the sidebar to select a player — a panel appears with their details and quick action buttons (Info, Freeze, Unfreeze, Summon, Kick, Ban). Actions are sent via the active SOAP connection.
+6. Optionally place map image files (`0.jpg`, `1.jpg`, `530.jpg`, `571.jpg`) in `assets/maps/` for visual map backgrounds (see `assets/maps/README.txt`).
+
 ## Project Structure
 
 ```
@@ -138,7 +157,10 @@ wow-admin/
 │       ├── types/
 │       │   └── state.ts    # Application state types
 │       └── utils/
-│           └── helpers.ts  # Utility functions
+│           ├── helpers.ts  # Utility functions
+│           └── map-coords.ts # WoW coordinate conversion utilities
+├── assets/
+│   └── maps/               # Optional map background images (0.jpg, 1.jpg, 530.jpg, 571.jpg)
 └── dist/                   # Compiled output
 ```
 

@@ -37,6 +37,19 @@ const electronAPI = {
       ipcRenderer.invoke('db:rollback'),
   },
 
+  // Live Map operations (dedicated characters-DB connection)
+  map: {
+    connect: (config: DbConfig): Promise<DbConnectionState> =>
+      ipcRenderer.invoke('map:connect', config),
+    disconnect: (): Promise<void> =>
+      ipcRenderer.invoke('map:disconnect'),
+    getPlayerPositions: (): Promise<Array<{
+      name: string; map: number; position_x: number; position_y: number;
+      level: number; race: number; class: number; account: string;
+    }>> =>
+      ipcRenderer.invoke('map:getPlayerPositions'),
+  },
+
   // Config/Profile operations
   config: {
     getProfiles: (): Promise<ConnectionProfile[]> => 

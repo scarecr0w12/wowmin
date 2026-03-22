@@ -5,6 +5,28 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.0] - 2026-03-22
+
+### Added
+
+- **Live Map tab** — real-time canvas map showing all online player positions, polling the `acore_characters` database on a configurable interval
+- Map image backgrounds: place `0.jpg`, `1.jpg`, `530.jpg`, `571.jpg` in `assets/maps/` to use actual continent maps; colour-fill + grid fallback is used when images are absent
+- Continent switcher for Eastern Kingdoms (0), Kalimdor (1), Outland (530), and Northrend (571)
+- Player dots colour-coded by class using WoW class colours; bot accounts rendered with reduced opacity
+- Player name labels displayed automatically when ≤ 30 players are visible on the current continent
+- Sidebar player list showing name, class colour dot, and level for all players on the selected continent
+- **Player selection** — click a dot on the canvas or a row in the sidebar to select a player; re-click to deselect
+  - Selected player highlighted with a white outer ring on the canvas and a highlighted row in the sidebar
+  - Selection panel below the canvas shows name (in class colour), level/race/class, and live coordinates
+  - Quick SOAP action buttons: **Info**, **Freeze**, **Unfreeze**, **Summon**, **Kick**, **Ban**
+  - Inline action result feedback; selection cleared automatically on continent switch or disconnect
+- Hover tooltip on the canvas showing player name, level, race, class, and map coordinates
+- Auto-refresh toggle (5 s default) with manual refresh button
+- Filter selector: Real Players only, Bots only, or All
+- Separate database connection for the map tab (connects to `acore_characters`)
+- `assets/maps/README.txt` with instructions for sourcing and naming map image files
+- `renderer/scripts/utils/map-coords.ts` — `CONTINENT_BOUNDS` constants and `worldToCanvas()` coordinate conversion using WorldMapArea.dbc bounds
+
 ## [2.0.1] - 2026-03-12
 
 ### Fixed

@@ -58,6 +58,10 @@ export interface AppState {
   dashboardInterval: ReturnType<typeof setInterval> | null;
   playersInterval: ReturnType<typeof setInterval> | null;
   ticketsInterval: ReturnType<typeof setInterval> | null;
+  // Map state
+  mapInterval: ReturnType<typeof setInterval> | null;
+  mapDbConnected: boolean;
+  mapSelectedContinent: number;
 }
 
 // Create initial state
@@ -78,5 +82,8 @@ export function createInitialState(): AppState {
     dashboardInterval: null,
     playersInterval: null,
     ticketsInterval: null,
+    mapInterval: null,
+    mapDbConnected: false,
+    mapSelectedContinent: 0,
   };
 }

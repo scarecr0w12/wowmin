@@ -2,7 +2,7 @@ import { app, BrowserWindow, ipcMain, Menu, nativeImage } from 'electron';
 import * as path from 'path';
 import { SoapClient } from './soap-client';
 import { ConfigStore } from './config-store';
-import { getDbService } from './database/db-service';
+import { getDbService, DatabaseService } from './database/db-service';
 import { SoapConfig, SoapResult, ConnectionProfile, DbConfig, DbConnectionState, QueryResult, FieldInfo } from './types/electron';
 
 const isMac = process.platform === 'darwin';
@@ -12,6 +12,7 @@ let mainWindow: BrowserWindow | null = null;
 let soapClient: SoapClient | null = null;
 let configStore: ConfigStore | null = null;
 const dbService = getDbService();
+const mapDbService = new DatabaseService();
 
 function getIconPath(): string {
   if (isWin) return path.join(__dirname, '..', 'assets', 'icon.ico');
@@ -232,6 +233,47 @@ ipcMain.handle('db:commit', async (): Promise<void> => {
 
 ipcMain.handle('db:rollback', async (): Promise<void> => {
   await dbService.rollback();
+});
+
+// ── Map IPC Handlers ───────────────────────────────────────────
+
+interface MapPlayerRow {
+  name: string;
+  map: number;
+  position_x: number;
+  position_y: number;
+  level: number;
+  race: number;
+  class: number;
+  account: string;
+}
+
+ipcMain.handle('map:connect', async (_event, config: DbConfig): Promise<DbConnectionState> => {
+  try {
+    const result = await mapDbService.connect(config);
+    if (result.success) {
+      return { connected: true, database: config.database, error: null };
+    }
+    return { connected: false, database: null, error: result.message };
+  } catch (err) {
+    const errorMessage = err instanceof Error ? err.message : String(err);
+    return { connected: false, database: null, error: errorMessage };
+  }
+});
+
+ipcMain.handle('map:disconnect', async (): Promise<void> => {
+  await mapDbService.disconnect();
+});
+
+ipcMain.handle('map:getPlayerPositions', async (): Promise<MapPlayerRow[]> => {
+  try {
+    const result = await mapDbService.query<MapPlayerRow>(
+      'SELECT name, map, position_x, position_y, level, race, `class`, account FROM characters WHERE online = 1'
+    );
+    return result.rows;
+  } catch {
+    return [];
+  }
 });
 
 // ── App lifecycle ─────────────────────────────────────────────
