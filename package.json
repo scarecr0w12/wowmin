@@ -8,6 +8,7 @@
     "build:ts:watch": "node esbuild.config.js --watch",
     "build:css": "tailwindcss -i ./renderer/styles/tailwind.css -o ./renderer/styles/output.css",
     "build:css:watch": "tailwindcss -i ./renderer/styles/tailwind.css -o ./renderer/styles/output.css --watch",
+    "extract:maps": "node scripts/extract-map-assets.mjs",
     "start": "npm run build:ts && npm run build:css && electron .",
     "dev": "npm run build:ts && npm run build:css && electron . --dev",
     "build": "npm run build:ts && npm run build:css && electron-builder",
@@ -40,7 +41,11 @@
     "typescript": "^5.3.0"
   },
   "dependencies": {
+    "jpeg-js": "^0.4.4",
+    "js-blp": "^1.0.5",
     "mysql2": "^3.6.0",
+    "pngjs": "^7.0.0",
+    "stormlib-js": "^0.1.1",
     "xml2js": "^0.6.2"
   },
   "build": {

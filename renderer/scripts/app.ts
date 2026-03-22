@@ -2,6 +2,7 @@
 import { ts, escapeHtml, showResult, debounce, getMapName, getZoneName, CLASS_COLORS, RACE_ICONS, RACE_NAMES, CLASS_NAMES } from './utils/helpers';
 import { CONTINENT_BOUNDS, worldToCanvas } from './utils/map-coords';
 import { AppState, createInitialState, PlayerInfo } from './types/state';
+import type { UpdateCheckResult } from '../../src/types/electron';
 
 // ── Application State ────────────────────────────────────────────────────
 const state: AppState = createInitialState();
@@ -22,6 +23,13 @@ const $output = $<HTMLElement>('output');
 const $form = $<HTMLFormElement>('command-form');
 const $cmdInput = $<HTMLInputElement>('command-input');
 const $btnSend = document.querySelector<HTMLButtonElement>('.btn-send');
+const $updateBanner = $<HTMLElement>('update-banner');
+const $appVersion = $<HTMLElement>('app-version');
+const $updateStatusText = $<HTMLElement>('update-status-text');
+const $btnCheckUpdates = $<HTMLButtonElement>('btn-check-updates');
+const $btnOpenUpdate = $<HTMLButtonElement>('btn-open-update');
+
+let latestReleaseUrl: string | null = null;
 
 // Profile elements
 const $profileSelect = $<HTMLSelectElement>('profile-select');
@@ -163,6 +171,64 @@ function logActivity(cmd: string, msg: string, ok: boolean): void {
   }
 }
 
+function renderUpdateStatus(result: UpdateCheckResult): void {
+  latestReleaseUrl = result.releaseUrl;
+
+  if ($appVersion) {
+    $appVersion.textContent = `v${result.currentVersion}`;
+  }
+
+  if ($updateBanner) {
+    $updateBanner.dataset.status = result.status;
+  }
+
+  if ($updateStatusText) {
+    const latestLabel = result.latestVersion ? ` Latest: v${result.latestVersion}.` : '';
+    $updateStatusText.textContent = `${result.message}${latestLabel}`;
+    $updateStatusText.title = $updateStatusText.textContent;
+  }
+
+  if ($btnOpenUpdate) {
+    const showOpenButton = Boolean(result.releaseUrl) && (result.updateAvailable || result.status === 'error');
+    $btnOpenUpdate.classList.toggle('hidden', !showOpenButton);
+  }
+}
+
+async function refreshUpdateStatus(force = false): Promise<void> {
+  if ($updateBanner) {
+    $updateBanner.dataset.status = 'checking';
+  }
+  if ($updateStatusText) {
+    $updateStatusText.textContent = 'Checking GitHub for updates…';
+  }
+  if ($btnCheckUpdates) {
+    $btnCheckUpdates.disabled = true;
+  }
+
+  try {
+    if ($appVersion && $appVersion.textContent === 'v--') {
+      const currentVersion = await window.electronAPI.app.getVersion();
+      $appVersion.textContent = `v${currentVersion}`;
+    }
+
+    const result = await window.electronAPI.update.check(force);
+    renderUpdateStatus(result);
+  } catch (error) {
+    if ($updateBanner) {
+      $updateBanner.dataset.status = 'error';
+    }
+    if ($updateStatusText) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      $updateStatusText.textContent = `Unable to check for updates right now: ${errorMessage}`;
+      $updateStatusText.title = $updateStatusText.textContent;
+    }
+  } finally {
+    if ($btnCheckUpdates) {
+      $btnCheckUpdates.disabled = false;
+    }
+  }
+}
+
 // ── Tab Switching ──────────────────────────────────────────────────────────
 $$<HTMLButtonElement>('#tab-bar .tab').forEach((btn) => {
   btn.addEventListener('click', () => {
@@ -300,6 +366,21 @@ appendOutput(
     `<span class="welcome">Type commands below or use the quick-command sidebar.</span>` +
     `</div>`
 );
+
+$btnCheckUpdates?.addEventListener('click', () => {
+  void refreshUpdateStatus(true);
+});
+
+$btnOpenUpdate?.addEventListener('click', async () => {
+  const result = await window.electronAPI.update.openReleasePage(latestReleaseUrl ?? undefined);
+  if (!result.success && $updateStatusText) {
+    $updateStatusText.textContent = result.message;
+    $updateStatusText.title = result.message;
+    $updateBanner?.setAttribute('data-status', 'error');
+  }
+});
+
+void refreshUpdateStatus();
 
 // ── Dashboard ──────────────────────────────────────────────────────────────
 function resetDashboard(): void {

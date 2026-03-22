@@ -40,6 +40,12 @@ and direct database access.
 - Optional map image backgrounds: place `0.jpg`, `1.jpg`, `530.jpg`, `571.jpg` in `assets/maps/` (see `assets/maps/README.txt`)
 - Requires a separate database connection to `acore_characters`
 
+### App Updates
+- Automatically checks GitHub releases on startup for newer app versions
+- Header status indicator shows current version, update availability, or check errors
+- Manual **Check** button to refresh release status on demand
+- **Open Release** button opens the latest GitHub release page in the default browser when an update is available
+
 ### Dashboard
 - Server info at a glance (uptime, online players, peak)
 - Quick actions for common server operations
@@ -128,6 +134,44 @@ npm start
 4. Use the continent buttons to switch between Eastern Kingdoms, Kalimdor, Outland, and Northrend.
 5. **Click a dot** or a row in the sidebar to select a player — a panel appears with their details and quick action buttons (Info, Freeze, Unfreeze, Summon, Kick, Ban). Actions are sent via the active SOAP connection.
 6. Optionally place map image files (`0.jpg`, `1.jpg`, `530.jpg`, `571.jpg`) in `assets/maps/` for visual map backgrounds (see `assets/maps/README.txt`).
+7. To generate those from a WoW 3.3.5a client, run `npm run extract:maps -- --source /path/to/WoW` (or the npm shorthand `npm run extract:maps --source /path/to/WoW`) or point it at an extracted `World/Minimaps` folder.
+
+### App Updates
+1. Launch the app normally.
+2. The header automatically checks GitHub for the latest release and shows your current version.
+3. If a newer release exists, the banner changes state and exposes an **Open Release** button.
+4. Use **Check** any time to manually refresh the release status.
+
+### Extracting map backgrounds from the WoW client
+
+You can now generate the live-map backgrounds directly from WoW minimap tiles:
+
+```bash
+# From a WoW 3.3.5a client root (the extractor now reads WoW MPQs directly; external tools are only a fallback)
+npm run extract:maps -- --source "/path/to/WoW 3.3.5a"
+
+# npm shorthand also works
+npm run extract:maps --source "/path/to/WoW 3.3.5a"
+
+# Or from an already extracted World/Minimaps directory
+npm run extract:maps -- --source "/path/to/World/Minimaps"
+```
+
+The extractor stitches the continent tiles and writes these files into `assets/maps/`:
+
+- `0.jpg` — Eastern Kingdoms
+- `1.jpg` — Kalimdor
+- `530.jpg` — Outland
+- `571.jpg` — Northrend
+
+Useful flags:
+
+- `--output /custom/dir` to write somewhere else
+- `--quality 95` to tweak JPEG quality
+- `--keep-workspace` to keep the raw extracted minimap tiles
+- `--workspace ./tmp/minimaps` to control where temporary extraction files go
+
+On Linux, note that some patch MPQs may be malformed or some minimap tiles may be corrupt in patched clients. The extractor now skips unreadable archives/tiles when possible and continues building the continent JPGs. If built-in extraction still cannot resolve your client, `7zz` remains a useful fallback, or you can extract `World/Minimaps` manually and point `--source` there.
 
 ## Project Structure
 
@@ -161,6 +205,8 @@ wow-admin/
 │           └── map-coords.ts # WoW coordinate conversion utilities
 ├── assets/
 │   └── maps/               # Optional map background images (0.jpg, 1.jpg, 530.jpg, 571.jpg)
+├── scripts/
+│   └── extract-map-assets.mjs # WoW minimap tile extractor/stitcher for live map backgrounds
 └── dist/                   # Compiled output
 ```
 

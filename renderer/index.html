@@ -35,6 +35,17 @@
       </div>
     </div>
     <div id="status-indicator" class="status disconnected">Disconnected</div>
+    <div id="update-banner" class="update-banner" data-status="checking">
+      <div class="update-banner-copy">
+        <span class="update-banner-label">App</span>
+        <span id="app-version" class="update-banner-version">v--</span>
+        <span id="update-status-text" class="update-banner-text">Checking GitHub for updates…</span>
+      </div>
+      <div class="update-banner-actions">
+        <button id="btn-check-updates" class="btn btn-small" title="Check GitHub for a newer release">⟳ Check</button>
+        <button id="btn-open-update" class="btn btn-small hidden" title="Open the latest GitHub release">↗ Open Release</button>
+      </div>
+    </div>
   </header>
 
   <!-- ─── Tab Bar ─── -->

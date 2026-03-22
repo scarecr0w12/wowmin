@@ -138,6 +138,72 @@ body.platform-darwin #connection-bar {
 .status.connected    { background: rgba(46, 204, 113, 0.15); color: var(--green); }
 .status.connecting   { background: rgba(241, 196, 15, 0.15); color: var(--yellow); }
 
+.update-banner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: rgba(255,255,255,0.03);
+  flex-wrap: wrap;
+}
+
+.update-banner-copy {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.update-banner-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: var(--text-muted);
+}
+
+.update-banner-version {
+  font-family: var(--font-mono);
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.update-banner-text {
+  color: var(--text-muted);
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 360px;
+}
+
+.update-banner-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.update-banner[data-status="checking"] {
+  border-color: rgba(241, 196, 15, 0.35);
+  background: rgba(241, 196, 15, 0.08);
+}
+
+.update-banner[data-status="up-to-date"] {
+  border-color: rgba(46, 204, 113, 0.35);
+  background: rgba(46, 204, 113, 0.08);
+}
+
+.update-banner[data-status="update-available"] {
+  border-color: rgba(52, 152, 219, 0.35);
+  background: rgba(52, 152, 219, 0.09);
+}
+
+.update-banner[data-status="error"] {
+  border-color: rgba(233, 69, 96, 0.35);
+  background: rgba(233, 69, 96, 0.08);
+}
+
 /* ── Buttons ──────────────────────────────────────────────── */
 .btn {
   padding: 6px 16px;

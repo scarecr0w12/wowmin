@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron';
-import { SoapConfig, SoapResult, DbConfig, DbConnectionState, QueryResult, FieldInfo, ConnectionProfile } from './types/electron';
+import { SoapConfig, SoapResult, DbConfig, DbConnectionState, QueryResult, FieldInfo, ConnectionProfile, UpdateCheckResult } from './types/electron';
 
 // Type-safe IPC wrapper for renderer process
 const electronAPI = {
@@ -11,6 +11,18 @@ const electronAPI = {
       ipcRenderer.invoke('soap:command', command),
     disconnect: (): Promise<SoapResult> => 
       ipcRenderer.invoke('soap:disconnect'),
+  },
+
+  app: {
+    getVersion: (): Promise<string> =>
+      ipcRenderer.invoke('app:getVersion'),
+  },
+
+  update: {
+    check: (force = false): Promise<UpdateCheckResult> =>
+      ipcRenderer.invoke('update:check', force),
+    openReleasePage: (url?: string): Promise<SoapResult> =>
+      ipcRenderer.invoke('update:openReleasePage', url),
   },
 
   // Database operations

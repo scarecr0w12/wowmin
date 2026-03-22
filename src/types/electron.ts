@@ -44,6 +44,17 @@ export interface SoapResult {
   message: string;
 }
 
+export interface UpdateCheckResult {
+  currentVersion: string;
+  latestVersion: string | null;
+  releaseName: string | null;
+  releaseUrl: string | null;
+  publishedAt: string | null;
+  updateAvailable: boolean;
+  status: 'idle' | 'checking' | 'up-to-date' | 'update-available' | 'error';
+  message: string;
+}
+
 // ── Profile Types ──────────────────────────────────────────────────────────
 
 export interface ConnectionProfile {
@@ -62,6 +73,9 @@ export type IpcChannels = {
   'soap:connect': (config: SoapConfig) => SoapResult;
   'soap:command': (command: string) => SoapResult;
   'soap:disconnect': () => SoapResult;
+  'app:getVersion': () => string;
+  'update:check': (force?: boolean) => UpdateCheckResult;
+  'update:openReleasePage': (url?: string) => SoapResult;
   
   // Database operations
   'db:connect': (config: DbConfig) => DbConnectionState;
