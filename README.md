@@ -32,10 +32,12 @@ and direct database access.
 ### Live Map (New!)
 - Real-time canvas map showing all online player positions
 - Continent switcher: Eastern Kingdoms, Kalimdor, Outland, Northrend
+- Map backgrounds preserve their aspect ratio automatically to avoid stretching/deformation on resize
 - Player dots colour-coded by WoW class; bot accounts dimmed
 - **Click a dot or sidebar row to select a player** — shows name, level, race, class, and live coordinates
 - Quick SOAP actions from the selection panel: Info, Freeze, Unfreeze, Summon, Kick, Ban
 - Hover tooltip with player details
+- Zoom controls with mouse wheel zoom, double-click zoom, drag-to-pan while zoomed, and quick reset back to `100%`
 - Auto-refresh (5 s) with manual refresh; filter by real players, bots, or all
 - Optional map image backgrounds: place `0.jpg`, `1.jpg`, `530.jpg`, `571.jpg` in `assets/maps/` (see `assets/maps/README.txt`)
 - Requires a separate database connection to `acore_characters`
@@ -133,8 +135,9 @@ npm start
 3. Players on the selected continent appear as coloured dots (class colours) on the canvas.
 4. Use the continent buttons to switch between Eastern Kingdoms, Kalimdor, Outland, and Northrend.
 5. **Click a dot** or a row in the sidebar to select a player — a panel appears with their details and quick action buttons (Info, Freeze, Unfreeze, Summon, Kick, Ban). Actions are sent via the active SOAP connection.
-6. Optionally place map image files (`0.jpg`, `1.jpg`, `530.jpg`, `571.jpg`) in `assets/maps/` for visual map backgrounds (see `assets/maps/README.txt`).
-7. To generate those from a WoW 3.3.5a client, run `npm run extract:maps -- --source /path/to/WoW` (or the npm shorthand `npm run extract:maps --source /path/to/WoW`) or point it at an extracted `World/Minimaps` folder.
+6. Use the mouse wheel or **double-click** to zoom into the map; drag to pan while zoomed, or click the zoom percentage control to reset to `100%`.
+7. Optionally place map image files (`0.jpg`, `1.jpg`, `530.jpg`, `571.jpg`) in `assets/maps/` for visual map backgrounds (see `assets/maps/README.txt`). The app preserves the image aspect ratio automatically.
+8. To generate those from a WoW 3.3.5a client, run `npm run extract:maps -- --source /path/to/WoW` (or the npm shorthand `npm run extract:maps --source /path/to/WoW`) or point it at an extracted `World/Minimaps` folder.
 
 ### App Updates
 1. Launch the app normally.

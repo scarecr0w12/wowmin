@@ -2572,10 +2572,31 @@ const $mapPlayerList      = $<HTMLElement>('map-player-list');
 const $mapAutoRefresh     = $<HTMLInputElement>('map-auto-refresh');
 const $mapFilterType      = $<HTMLSelectElement>('map-filter-type');
 const $mapRefreshBtn      = $<HTMLButtonElement>('map-refresh-btn');
+const $mapZoomOutBtn      = $<HTMLButtonElement>('map-zoom-out-btn');
+const $mapZoomInBtn       = $<HTMLButtonElement>('map-zoom-in-btn');
+const $mapZoomResetBtn    = $<HTMLButtonElement>('map-zoom-reset-btn');
+const $mapInteractionHint = $<HTMLElement>('map-interaction-hint');
 
 let mapAllPlayers: MapPlayerPosition[] = [];
 const mapImageCache = new Map<number, HTMLImageElement | 'failed'>();
 let mapSelectedPlayerName: string | null = null;
+const MAP_MIN_ZOOM = 1;
+const MAP_MAX_ZOOM = 5;
+const MAP_ZOOM_STEP = 1.2;
+let mapDragState: { startX: number; startY: number; startPanX: number; startPanY: number } | null = null;
+let mapSuppressClick = false;
+
+interface MapViewport {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+interface MapRenderLayout {
+  frame: MapViewport;
+  content: MapViewport;
+}
 
 // ── Image preloading ───────────────────────────────────────────────────────
 function preloadMapImage(mapId: number): void {
@@ -2585,6 +2606,212 @@ function preloadMapImage(mapId: number): void {
   img.onerror = () => { mapImageCache.set(mapId, 'failed'); };
   // Relative to renderer/index.html  →  wow-admin/assets/maps/<id>.jpg
   img.src = `../assets/maps/${mapId}.jpg`;
+}
+
+function getMapAspectRatio(bounds: (typeof CONTINENT_BOUNDS)[number], mapId: number): number {
+  const cachedImg = mapImageCache.get(mapId);
+  if (cachedImg && cachedImg !== 'failed') {
+    const img = cachedImg as HTMLImageElement;
+    if (img.naturalWidth > 0 && img.naturalHeight > 0) {
+      return img.naturalWidth / img.naturalHeight;
+    }
+  }
+
+  if (bounds.tileProjection) {
+    const { minTileX, maxTileX, minTileY, maxTileY } = bounds.tileProjection;
+    const cropWidthTiles = maxTileX - minTileX + 1;
+    const cropHeightTiles = maxTileY - minTileY + 1;
+    if (cropWidthTiles > 0 && cropHeightTiles > 0) {
+      return cropWidthTiles / cropHeightTiles;
+    }
+  }
+
+  const worldWidth = Math.abs(bounds.locLeft - bounds.locRight);
+  const worldHeight = Math.abs(bounds.locTop - bounds.locBottom);
+  if (worldWidth > 0 && worldHeight > 0) {
+    return worldWidth / worldHeight;
+  }
+
+  return 1;
+}
+
+function getMapViewport(canvasWidth: number, canvasHeight: number, bounds: (typeof CONTINENT_BOUNDS)[number], mapId: number): MapViewport {
+  const aspectRatio = getMapAspectRatio(bounds, mapId);
+  if (!Number.isFinite(aspectRatio) || aspectRatio <= 0 || canvasWidth <= 0 || canvasHeight <= 0) {
+    return { x: 0, y: 0, width: canvasWidth, height: canvasHeight };
+  }
+
+  const canvasAspectRatio = canvasWidth / canvasHeight;
+  if (canvasAspectRatio > aspectRatio) {
+    const height = canvasHeight;
+    const width = Math.max(1, Math.round(height * aspectRatio));
+    return {
+      x: Math.floor((canvasWidth - width) / 2),
+      y: 0,
+      width,
+      height,
+    };
+  }
+
+  const width = canvasWidth;
+  const height = Math.max(1, Math.round(width / aspectRatio));
+  return {
+    x: 0,
+    y: Math.floor((canvasHeight - height) / 2),
+    width,
+    height,
+  };
+}
+
+function projectWorldToViewport(
+  player: Pick<MapPlayerPosition, 'position_x' | 'position_y'>,
+  bounds: (typeof CONTINENT_BOUNDS)[number],
+  viewport: MapViewport,
+): { x: number; y: number } {
+  const point = worldToCanvas(player.position_x, player.position_y, bounds, viewport.width, viewport.height);
+  return {
+    x: viewport.x + point.x,
+    y: viewport.y + point.y,
+  };
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value));
+}
+
+function isPointInViewport(x: number, y: number, viewport: MapViewport): boolean {
+  return x >= viewport.x && x <= viewport.x + viewport.width && y >= viewport.y && y <= viewport.y + viewport.height;
+}
+
+function getClampedMapPan(viewport: MapViewport, zoom = state.mapZoom, panX = state.mapPanX, panY = state.mapPanY): { x: number; y: number } {
+  if (zoom <= MAP_MIN_ZOOM) {
+    return { x: 0, y: 0 };
+  }
+
+  const maxPanX = (viewport.width * zoom - viewport.width) / 2;
+  const maxPanY = (viewport.height * zoom - viewport.height) / 2;
+  return {
+    x: clamp(panX, -maxPanX, maxPanX),
+    y: clamp(panY, -maxPanY, maxPanY),
+  };
+}
+
+function getMapRenderLayout(
+  canvasWidth: number,
+  canvasHeight: number,
+  bounds: (typeof CONTINENT_BOUNDS)[number],
+  mapId: number,
+): MapRenderLayout {
+  const frame = getMapViewport(canvasWidth, canvasHeight, bounds, mapId);
+  const zoom = clamp(state.mapZoom, MAP_MIN_ZOOM, MAP_MAX_ZOOM);
+  const pan = getClampedMapPan(frame, zoom);
+  const contentWidth = frame.width * zoom;
+  const contentHeight = frame.height * zoom;
+  const centeredX = frame.x - (contentWidth - frame.width) / 2;
+  const centeredY = frame.y - (contentHeight - frame.height) / 2;
+
+  return {
+    frame,
+    content: {
+      x: centeredX + pan.x,
+      y: centeredY + pan.y,
+      width: contentWidth,
+      height: contentHeight,
+    },
+  };
+}
+
+function syncMapViewState(canvasWidth?: number, canvasHeight?: number): void {
+  state.mapZoom = clamp(state.mapZoom, MAP_MIN_ZOOM, MAP_MAX_ZOOM);
+  if (state.mapZoom <= MAP_MIN_ZOOM) {
+    state.mapZoom = MAP_MIN_ZOOM;
+    state.mapPanX = 0;
+    state.mapPanY = 0;
+  } else if (canvasWidth && canvasHeight) {
+    const bounds = CONTINENT_BOUNDS[state.mapSelectedContinent];
+    if (bounds) {
+      const frame = getMapViewport(canvasWidth, canvasHeight, bounds, state.mapSelectedContinent);
+      const pan = getClampedMapPan(frame);
+      state.mapPanX = pan.x;
+      state.mapPanY = pan.y;
+    }
+  }
+
+  if ($mapZoomResetBtn) {
+    $mapZoomResetBtn.textContent = `${Math.round(state.mapZoom * 100)}%`;
+  }
+  if ($mapZoomOutBtn) $mapZoomOutBtn.disabled = state.mapZoom <= MAP_MIN_ZOOM + 0.001;
+  if ($mapZoomInBtn) $mapZoomInBtn.disabled = state.mapZoom >= MAP_MAX_ZOOM - 0.001;
+  if ($mapInteractionHint) {
+    const shouldHideHint = state.mapZoom > MAP_MIN_ZOOM || Boolean(mapDragState);
+    $mapInteractionHint.classList.toggle('hidden', shouldHideHint);
+  }
+}
+
+function resetMapZoom(render = true): void {
+  state.mapZoom = MAP_MIN_ZOOM;
+  state.mapPanX = 0;
+  state.mapPanY = 0;
+  syncMapViewState($mapCanvas?.width, $mapCanvas?.height);
+  if (render) renderMapCanvas();
+}
+
+function zoomMap(nextZoom: number, anchorX?: number, anchorY?: number): void {
+  if (!$mapCanvas) return;
+  const bounds = CONTINENT_BOUNDS[state.mapSelectedContinent];
+  if (!bounds) return;
+
+  const targetZoom = clamp(nextZoom, MAP_MIN_ZOOM, MAP_MAX_ZOOM);
+  if (Math.abs(targetZoom - state.mapZoom) < 0.001) return;
+
+  const W = $mapCanvas.width || $mapCanvas.clientWidth;
+  const H = $mapCanvas.height || $mapCanvas.clientHeight;
+  if (!W || !H) return;
+
+  const currentLayout = getMapRenderLayout(W, H, bounds, state.mapSelectedContinent);
+  const frame = currentLayout.frame;
+  const fallbackAnchorX = frame.x + frame.width / 2;
+  const fallbackAnchorY = frame.y + frame.height / 2;
+  const ax = clamp(anchorX ?? fallbackAnchorX, frame.x, frame.x + frame.width);
+  const ay = clamp(anchorY ?? fallbackAnchorY, frame.y, frame.y + frame.height);
+
+  const relX = (ax - currentLayout.content.x) / currentLayout.content.width;
+  const relY = (ay - currentLayout.content.y) / currentLayout.content.height;
+
+  state.mapZoom = targetZoom;
+  if (targetZoom <= MAP_MIN_ZOOM) {
+    state.mapPanX = 0;
+    state.mapPanY = 0;
+  } else {
+    const newContentWidth = frame.width * targetZoom;
+    const newContentHeight = frame.height * targetZoom;
+    const centeredX = frame.x - (newContentWidth - frame.width) / 2;
+    const centeredY = frame.y - (newContentHeight - frame.height) / 2;
+    const newContentX = ax - relX * newContentWidth;
+    const newContentY = ay - relY * newContentHeight;
+    const pan = getClampedMapPan(frame, targetZoom, newContentX - centeredX, newContentY - centeredY);
+    state.mapPanX = pan.x;
+    state.mapPanY = pan.y;
+  }
+
+  syncMapViewState(W, H);
+  renderMapCanvas();
+}
+
+function panMap(nextPanX: number, nextPanY: number): void {
+  if (!$mapCanvas) return;
+  const bounds = CONTINENT_BOUNDS[state.mapSelectedContinent];
+  if (!bounds) return;
+  const W = $mapCanvas.width || $mapCanvas.clientWidth;
+  const H = $mapCanvas.height || $mapCanvas.clientHeight;
+  if (!W || !H) return;
+
+  const frame = getMapViewport(W, H, bounds, state.mapSelectedContinent);
+  const pan = getClampedMapPan(frame, state.mapZoom, nextPanX, nextPanY);
+  state.mapPanX = pan.x;
+  state.mapPanY = pan.y;
+  syncMapViewState(W, H);
+  renderMapCanvas();
 }
 
 // ── Filtering ──────────────────────────────────────────────────────────────
@@ -2685,54 +2912,71 @@ function renderMapCanvas(): void {
 
   const bounds = CONTINENT_BOUNDS[state.mapSelectedContinent];
   if (!bounds) return;
+  syncMapViewState(W, H);
+  const layout = getMapRenderLayout(W, H, bounds, state.mapSelectedContinent);
+  const viewport = layout.frame;
+  const content = layout.content;
+
+  ctx.clearRect(0, 0, W, H);
+  ctx.fillStyle = '#08111d';
+  ctx.fillRect(0, 0, W, H);
+
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(viewport.x, viewport.y, viewport.width, viewport.height);
+  ctx.clip();
 
   // Background – use map image if available, else colour fill + guides
   const cachedImg = mapImageCache.get(state.mapSelectedContinent);
   const hasImage  = cachedImg && cachedImg !== 'failed';
   if (hasImage) {
-    ctx.drawImage(cachedImg as HTMLImageElement, 0, 0, W, H);
+    ctx.drawImage(cachedImg as HTMLImageElement, content.x, content.y, content.width, content.height);
     // Slight darkening overlay so dots remain readable
     ctx.fillStyle = 'rgba(0,0,0,0.28)';
-    ctx.fillRect(0, 0, W, H);
+    ctx.fillRect(content.x, content.y, content.width, content.height);
   } else {
     ctx.fillStyle = bounds.bgColor;
-    ctx.fillRect(0, 0, W, H);
+    ctx.fillRect(content.x, content.y, content.width, content.height);
     // Subtle grid
     ctx.strokeStyle = 'rgba(255,255,255,0.04)';
     ctx.lineWidth = 1;
     for (let i = 1; i < 10; i++) {
-      const gx = (W / 10) * i;
-      ctx.beginPath(); ctx.moveTo(gx, 0); ctx.lineTo(gx, H); ctx.stroke();
-      const gy = (H / 10) * i;
-      ctx.beginPath(); ctx.moveTo(0, gy); ctx.lineTo(W, gy); ctx.stroke();
+      const gx = content.x + (content.width / 10) * i;
+      ctx.beginPath(); ctx.moveTo(gx, content.y); ctx.lineTo(gx, content.y + content.height); ctx.stroke();
+      const gy = content.y + (content.height / 10) * i;
+      ctx.beginPath(); ctx.moveTo(content.x, gy); ctx.lineTo(content.x + content.width, gy); ctx.stroke();
     }
     // Watermark continent name
     ctx.fillStyle = 'rgba(255,255,255,0.07)';
-    ctx.font = `bold ${Math.min(36, W / 12)}px sans-serif`;
+    ctx.font = `bold ${Math.min(36, content.width / 12)}px sans-serif`;
     ctx.textAlign = 'center';
-    ctx.fillText(bounds.label, W / 2, H / 2 + 14);
+    ctx.fillText(bounds.label, content.x + content.width / 2, content.y + content.height / 2 + 14);
     ctx.textAlign = 'left';
 
     if (!state.mapDbConnected) {
+      ctx.restore();
       ctx.fillStyle = 'rgba(255,255,255,0.35)';
       ctx.font = '13px sans-serif';
       ctx.textAlign = 'center';
-      ctx.fillText('Connect to the characters database to see live positions', W / 2, H / 2 + 52);
+      ctx.fillText('Connect to the characters database to see live positions', viewport.x + viewport.width / 2, viewport.y + viewport.height / 2 + 52);
       ctx.fillStyle = 'rgba(255,255,255,0.18)';
       ctx.font = '11px sans-serif';
-      ctx.fillText('Tip: place map images at assets/maps/0.jpg · 1.jpg · 530.jpg · 571.jpg', W / 2, H / 2 + 72);
+      ctx.fillText('Tip: place map images at assets/maps/0.jpg · 1.jpg · 530.jpg · 571.jpg', viewport.x + viewport.width / 2, viewport.y + viewport.height / 2 + 72);
       ctx.textAlign = 'left';
       return;
     }
   }
 
-  if (!state.mapDbConnected) return;
+  if (!state.mapDbConnected) {
+    ctx.restore();
+    return;
+  }
 
   const players = getMapFilteredPlayers();
   const showLabels = players.length > 0 && players.length <= 30;
 
   for (const p of players) {
-    const { x, y } = worldToCanvas(p.position_x, p.position_y, bounds, W, H);
+    const { x, y } = projectWorldToViewport(p, bounds, content);
     const isBot     = /^RNDBOT/i.test(p.account);
     const isSelected = p.name === mapSelectedPlayerName;
     const dotColor  = isBot ? '#888' : (CLASS_COLORS[p.class] || '#4fc3f7');
@@ -2775,12 +3019,13 @@ function renderMapCanvas(): void {
     }
   }
   ctx.shadowBlur = 0;
+  ctx.restore();
 
   if (players.length === 0) {
     ctx.fillStyle = 'rgba(255,255,255,0.28)';
     ctx.font = '13px sans-serif';
     ctx.textAlign = 'center';
-    ctx.fillText('No players on this continent', W / 2, H / 2 + 52);
+    ctx.fillText('No players on this continent', viewport.x + viewport.width / 2, viewport.y + viewport.height / 2 + 52);
     ctx.textAlign = 'left';
   }
 }
@@ -2839,6 +3084,10 @@ function renderMapSelectedPanel(): void {
 
 // ── Canvas click → player selection ──────────────────────────────────────
 $mapCanvas?.addEventListener('click', (e) => {
+  if (mapSuppressClick) {
+    mapSuppressClick = false;
+    return;
+  }
   if (!$mapCanvas) return;
   const bounds = CONTINENT_BOUNDS[state.mapSelectedContinent];
   if (!bounds) return;
@@ -2848,10 +3097,13 @@ $mapCanvas?.addEventListener('click', (e) => {
   const my = e.clientY - rect.top;
   const W = $mapCanvas.width;
   const H = $mapCanvas.height;
+  const layout = getMapRenderLayout(W, H, bounds, state.mapSelectedContinent);
+  const viewport = layout.frame;
+  if (!isPointInViewport(mx, my, viewport)) return;
 
   let hit: MapPlayerPosition | null = null;
   for (const p of getMapFilteredPlayers()) {
-    const { x, y } = worldToCanvas(p.position_x, p.position_y, bounds, W, H);
+    const { x, y } = projectWorldToViewport(p, bounds, layout.content);
     const dx = mx - x, dy = my - y;
     if (dx * dx + dy * dy < 196) { hit = p; break; } // 14 px radius
   }
@@ -2924,10 +3176,24 @@ $mapCanvas?.addEventListener('mousemove', (e) => {
   const my = e.clientY - rect.top;
   const W = $mapCanvas.width;
   const H = $mapCanvas.height;
+  const layout = getMapRenderLayout(W, H, bounds, state.mapSelectedContinent);
+  const viewport = layout.frame;
+
+  if (mapDragState) {
+    $mapTooltip.classList.add('hidden');
+    $mapCanvas.style.cursor = 'grabbing';
+    return;
+  }
+
+  if (!isPointInViewport(mx, my, viewport)) {
+    $mapTooltip.classList.add('hidden');
+    $mapCanvas.style.cursor = 'default';
+    return;
+  }
 
   let hit: MapPlayerPosition | null = null;
   for (const p of getMapFilteredPlayers()) {
-    const { x, y } = worldToCanvas(p.position_x, p.position_y, bounds, W, H);
+    const { x, y } = projectWorldToViewport(p, bounds, layout.content);
     const dx = mx - x, dy = my - y;
     if (dx * dx + dy * dy < 100) { hit = p; break; }
   }
@@ -2948,15 +3214,85 @@ $mapCanvas?.addEventListener('mousemove', (e) => {
     $mapTooltip.style.left = `${tx}px`;
     $mapTooltip.style.top  = `${ty}px`;
     $mapTooltip.classList.remove('hidden');
-    $mapCanvas.style.cursor = 'crosshair';
+    $mapCanvas.style.cursor = 'pointer';
   } else {
     $mapTooltip.classList.add('hidden');
-    $mapCanvas.style.cursor = 'default';
+    $mapCanvas.style.cursor = state.mapZoom > MAP_MIN_ZOOM ? 'grab' : 'default';
   }
 });
 
 $mapCanvas?.addEventListener('mouseleave', () => {
   $mapTooltip?.classList.add('hidden');
+  if ($mapCanvas && !mapDragState) $mapCanvas.style.cursor = 'default';
+});
+
+$mapCanvas?.addEventListener('mousedown', (e) => {
+  if (e.button !== 0 || !$mapCanvas || state.mapZoom <= MAP_MIN_ZOOM) return;
+  const bounds = CONTINENT_BOUNDS[state.mapSelectedContinent];
+  if (!bounds) return;
+
+  const rect = $mapCanvas.getBoundingClientRect();
+  const mx = e.clientX - rect.left;
+  const my = e.clientY - rect.top;
+  const layout = getMapRenderLayout($mapCanvas.width, $mapCanvas.height, bounds, state.mapSelectedContinent);
+  if (!isPointInViewport(mx, my, layout.frame)) return;
+
+  mapDragState = {
+    startX: e.clientX,
+    startY: e.clientY,
+    startPanX: state.mapPanX,
+    startPanY: state.mapPanY,
+  };
+  $mapTooltip?.classList.add('hidden');
+  $mapCanvas.style.cursor = 'grabbing';
+});
+
+window.addEventListener('mousemove', (e) => {
+  if (!mapDragState) return;
+  const dx = e.clientX - mapDragState.startX;
+  const dy = e.clientY - mapDragState.startY;
+  if (Math.abs(dx) > 2 || Math.abs(dy) > 2) {
+    mapSuppressClick = true;
+  }
+  panMap(mapDragState.startPanX + dx, mapDragState.startPanY + dy);
+  if ($mapTooltip) $mapTooltip.classList.add('hidden');
+  if ($mapCanvas) $mapCanvas.style.cursor = 'grabbing';
+});
+
+window.addEventListener('mouseup', () => {
+  if (!mapDragState) return;
+  mapDragState = null;
+  if ($mapCanvas) $mapCanvas.style.cursor = state.mapZoom > MAP_MIN_ZOOM ? 'grab' : 'default';
+});
+
+$mapCanvas?.addEventListener('wheel', (e) => {
+  if (!$mapCanvas) return;
+  const bounds = CONTINENT_BOUNDS[state.mapSelectedContinent];
+  if (!bounds) return;
+  const rect = $mapCanvas.getBoundingClientRect();
+  const mx = e.clientX - rect.left;
+  const my = e.clientY - rect.top;
+  const layout = getMapRenderLayout($mapCanvas.width, $mapCanvas.height, bounds, state.mapSelectedContinent);
+  if (!isPointInViewport(mx, my, layout.frame)) return;
+
+  e.preventDefault();
+  const factor = e.deltaY < 0 ? MAP_ZOOM_STEP : 1 / MAP_ZOOM_STEP;
+  zoomMap(state.mapZoom * factor, mx, my);
+}, { passive: false });
+
+$mapCanvas?.addEventListener('dblclick', (e) => {
+  if (!$mapCanvas) return;
+  const bounds = CONTINENT_BOUNDS[state.mapSelectedContinent];
+  if (!bounds) return;
+
+  const rect = $mapCanvas.getBoundingClientRect();
+  const mx = e.clientX - rect.left;
+  const my = e.clientY - rect.top;
+  const layout = getMapRenderLayout($mapCanvas.width, $mapCanvas.height, bounds, state.mapSelectedContinent);
+  if (!isPointInViewport(mx, my, layout.frame)) return;
+
+  e.preventDefault();
+  zoomMap(state.mapZoom * MAP_ZOOM_STEP, mx, my);
 });
 
 // ── Continent selector ─────────────────────────────────────────────────────
@@ -2966,6 +3302,7 @@ $$<HTMLButtonElement>('.map-continent-btn').forEach((btn) => {
     btn.classList.add('active');
     state.mapSelectedContinent = Number(btn.dataset.continent ?? '0');
     preloadMapImage(state.mapSelectedContinent);
+    resetMapZoom(false);
     mapSelectedPlayerName = null;
     if ($mapPlayerCount) $mapPlayerCount.textContent = `${getMapFilteredPlayers().length} on this map`;
     renderMapCanvas();
@@ -2978,6 +3315,9 @@ $$<HTMLButtonElement>('.map-continent-btn').forEach((btn) => {
 $mapDbConnectBtn?.addEventListener('click', connectMapDb);
 $mapDbDisconnectBtn?.addEventListener('click', disconnectMapDb);
 $mapRefreshBtn?.addEventListener('click', refreshMapPositions);
+$mapZoomOutBtn?.addEventListener('click', () => zoomMap(state.mapZoom / MAP_ZOOM_STEP));
+$mapZoomInBtn?.addEventListener('click', () => zoomMap(state.mapZoom * MAP_ZOOM_STEP));
+$mapZoomResetBtn?.addEventListener('click', () => resetMapZoom());
 
 $mapAutoRefresh?.addEventListener('change', () => {
   if ($mapAutoRefresh.checked) startMapAutoRefresh(); else stopMapAutoRefresh();
@@ -3005,5 +3345,6 @@ const _mapWrapper = document.querySelector('.map-canvas-wrapper');
 if (_mapWrapper) _mapResizeObserver.observe(_mapWrapper);
 
 // Initial blank render
+syncMapViewState();
 renderMapCanvas();
 

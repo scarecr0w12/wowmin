@@ -62,6 +62,9 @@ export interface AppState {
   mapInterval: ReturnType<typeof setInterval> | null;
   mapDbConnected: boolean;
   mapSelectedContinent: number;
+  mapZoom: number;
+  mapPanX: number;
+  mapPanY: number;
 }
 
 // Create initial state
@@ -85,5 +88,8 @@ export function createInitialState(): AppState {
     mapInterval: null,
     mapDbConnected: false,
     mapSelectedContinent: 0,
+    mapZoom: 1,
+    mapPanX: 0,
+    mapPanY: 0,
   };
 }
