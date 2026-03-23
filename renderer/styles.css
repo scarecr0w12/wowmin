@@ -2071,6 +2071,46 @@ tbody tr:hover { background: rgba(233,69,96,.05); }
   min-height: 200px;
 }
 
+.map-zoom-controls {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  display: flex;
+  gap: 6px;
+  z-index: 12;
+}
+
+.map-zoom-controls .btn {
+  min-width: 36px;
+}
+
+.map-zoom-level {
+  min-width: 68px !important;
+  font-family: var(--font-mono);
+}
+
+.map-interaction-hint {
+  position: absolute;
+  left: 12px;
+  bottom: 12px;
+  z-index: 11;
+  max-width: min(320px, calc(100% - 24px));
+  padding: 6px 10px;
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 999px;
+  background: rgba(8, 17, 29, 0.78);
+  color: var(--text-muted);
+  font-size: 11px;
+  line-height: 1.35;
+  backdrop-filter: blur(6px);
+  pointer-events: none;
+  transition: opacity 0.18s ease;
+}
+
+.map-interaction-hint.hidden {
+  opacity: 0;
+}
+
 #map-canvas {
   display: block;
   width: 100%;

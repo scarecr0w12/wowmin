@@ -1014,6 +1014,12 @@ SELECT * FROM creature_template WHERE entry = 1;" spellcheck="false"></textarea>
           <button class="map-continent-btn" data-continent="571">Northrend</button>
         </div>
         <div class="map-canvas-wrapper">
+          <div class="map-zoom-controls">
+            <button id="map-zoom-out-btn" class="btn btn-tiny" title="Zoom out">−</button>
+            <button id="map-zoom-reset-btn" class="btn btn-tiny map-zoom-level" title="Reset zoom">100%</button>
+            <button id="map-zoom-in-btn" class="btn btn-tiny" title="Zoom in">+</button>
+          </div>
+          <div id="map-interaction-hint" class="map-interaction-hint">Double-click or scroll to zoom • drag to pan</div>
           <canvas id="map-canvas"></canvas>
           <div id="map-tooltip" class="map-tooltip hidden"></div>
         </div>

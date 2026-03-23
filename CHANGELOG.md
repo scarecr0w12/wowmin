@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.2] - 2026-03-23
+
+### Improved
+
+- Live map backgrounds now preserve their original aspect ratio instead of stretching to the canvas bounds, keeping stitched continent images visually correct on resize
+- Added live-map zoom controls with mouse wheel zoom, zoom in/out buttons, reset-to-100% control, and cursor-anchored zooming
+- Added live-map panning while zoomed, with clamped drag bounds so the current continent remains in view
+- Updated map hit-testing, player marker projection, and tooltip/selection logic to stay aligned while zoomed or letterboxed
+- Added double-click zoom shortcut and an inline interaction hint for the map canvas
+
 ## [2.1.1] - 2026-03-22
 
 ### Added
