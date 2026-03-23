@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.3] - 2026-03-23
+
+### Fixed
+
+- Live map player filters now resolve account usernames from the auth database before classifying bots, so **Players Only** and **Bots Only** correctly separate real players from `RNDBOT` accounts even though the characters table stores numeric account IDs
+
+### Improved
+
+- Windows packaging scripts and CI now run through `scripts/package.js`, preserving the local Windows-safe Electron Builder flags during release builds
+- Windows NSIS and portable builds now use distinct artifact names so the portable executable no longer overwrites the installer output
+
 ## [2.1.2] - 2026-03-23
 
 ### Improved

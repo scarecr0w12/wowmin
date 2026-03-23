@@ -38,7 +38,7 @@ and direct database access.
 - Quick SOAP actions from the selection panel: Info, Freeze, Unfreeze, Summon, Kick, Ban
 - Hover tooltip with player details
 - Zoom controls with mouse wheel zoom, double-click zoom, drag-to-pan while zoomed, and quick reset back to `100%`
-- Auto-refresh (5 s) with manual refresh; filter by real players, bots, or all
+- Auto-refresh (5 s) with manual refresh; filter by real players, bots, or all, with bot detection resolved from account usernames when available
 - Optional map image backgrounds: place `0.jpg`, `1.jpg`, `530.jpg`, `571.jpg` in `assets/maps/` (see `assets/maps/README.txt`)
 - Requires a separate database connection to `acore_characters`
 
@@ -241,6 +241,10 @@ npm run build:mac    # macOS
 npm run build:linux  # Linux
 npm run build:all    # Windows + Linux
 ```
+
+On Windows, the packaging commands intentionally run through `scripts/package.js`,
+which disables Electron Builder's `signAndEditExecutable` step so non-elevated
+shells and CI jobs can still produce the NSIS/portable installers.
 
 ## Technology Stack
 

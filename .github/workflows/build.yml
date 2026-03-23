@@ -36,7 +36,7 @@ jobs:
         run: npm run build:ts && npm run build:css
 
       - name: Build Electron app
-        run: npx electron-builder ${{ matrix.build_flags }} --publish never
+        run: node scripts/package.js ${{ matrix.build_flags }} --publish never
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4

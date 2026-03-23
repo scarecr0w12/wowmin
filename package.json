@@ -1,6 +1,6 @@
 {
   "name": "wow-admin",
-  "version": "2.1.2",
+  "version": "2.1.3",
   "description": "Desktop admin tool for AzerothCore servers with SOAP and Database editing",
   "main": "dist/main.js",
   "scripts": {
@@ -11,11 +11,11 @@
     "extract:maps": "node scripts/extract-map-assets.mjs",
     "start": "npm run build:ts && npm run build:css && electron .",
     "dev": "npm run build:ts && npm run build:css && electron . --dev",
-    "build": "npm run build:ts && npm run build:css && electron-builder",
-    "build:win": "npm run build:ts && npm run build:css && electron-builder --win",
-    "build:mac": "npm run build:ts && npm run build:css && electron-builder --mac",
-    "build:linux": "npm run build:ts && npm run build:css && electron-builder --linux",
-    "build:all": "npm run build:ts && npm run build:css && electron-builder --win --linux",
+    "build": "npm run build:ts && npm run build:css && node scripts/package.js",
+    "build:win": "npm run build:ts && npm run build:css && node scripts/package.js --win",
+    "build:mac": "npm run build:ts && npm run build:css && node scripts/package.js --mac",
+    "build:linux": "npm run build:ts && npm run build:css && node scripts/package.js --linux",
+    "build:all": "npm run build:ts && npm run build:css && node scripts/package.js --win --linux",
     "typecheck": "tsc --noEmit"
   },
   "keywords": [
@@ -77,13 +77,17 @@
         }
       ],
       "icon": "assets/icon.ico",
-      "artifactName": "${productName}-${version}-win-${arch}.${ext}"
+      "artifactName": "${productName}-${version}-setup-win-${arch}.${ext}"
     },
     "nsis": {
+      "artifactName": "${productName}-${version}-setup-win-${arch}.${ext}",
       "oneClick": false,
       "perMachine": false,
       "allowToChangeInstallationDirectory": true,
       "deleteAppDataOnUninstall": false
+    },
+    "portable": {
+      "artifactName": "${productName}-${version}-portable-win-${arch}.${ext}"
     },
     "mac": {
       "target": [

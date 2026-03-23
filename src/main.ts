@@ -431,10 +431,33 @@ interface MapPlayerRow {
   account: string;
 }
 
+interface MapPlayerQueryRow extends Omit<MapPlayerRow, 'account'> {
+  account: string | number;
+}
+
+let mapAuthDatabaseName = 'acore_auth';
+
+function deriveAuthDatabaseName(charactersDatabaseName: string): string {
+  const normalized = charactersDatabaseName.trim();
+  if (!normalized) return 'acore_auth';
+  if (/characters$/i.test(normalized)) {
+    return normalized.replace(/characters$/i, 'auth');
+  }
+  if (/_char$/i.test(normalized)) {
+    return normalized.replace(/_char$/i, '_auth');
+  }
+  return 'acore_auth';
+}
+
+function escapeIdentifier(identifier: string): string {
+  return `\`${identifier.replace(/`/g, '``')}\``;
+}
+
 ipcMain.handle('map:connect', async (_event, config: DbConfig): Promise<DbConnectionState> => {
   try {
     const result = await mapDbService.connect(config);
     if (result.success) {
+      mapAuthDatabaseName = deriveAuthDatabaseName(config.database || '');
       return { connected: true, database: config.database, error: null };
     }
     return { connected: false, database: null, error: result.message };
@@ -450,10 +473,47 @@ ipcMain.handle('map:disconnect', async (): Promise<void> => {
 
 ipcMain.handle('map:getPlayerPositions', async (): Promise<MapPlayerRow[]> => {
   try {
-    const result = await mapDbService.query<MapPlayerRow>(
+    const result = await mapDbService.query<MapPlayerQueryRow>(
       'SELECT name, map, position_x, position_y, level, race, `class`, account FROM characters WHERE online = 1'
     );
-    return result.rows;
+    const rows = result.rows || [];
+    if (rows.length === 0) {
+      return [];
+    }
+
+    const accountIds = [...new Set(
+      rows
+        .map((row) => Number(row.account))
+        .filter((accountId) => Number.isInteger(accountId) && accountId > 0)
+    )];
+
+    let usernamesById = new Map<number, string>();
+
+    if (accountIds.length > 0) {
+      try {
+        const placeholders = accountIds.map(() => '?').join(', ');
+        const authTable = `${escapeIdentifier(mapAuthDatabaseName)}.\`account\``;
+        const accountsResult = await mapDbService.query<{ id: number; username: string }>(
+          `SELECT id, username FROM ${authTable} WHERE id IN (${placeholders})`,
+          accountIds,
+        );
+        usernamesById = new Map(accountsResult.rows.map((row) => [Number(row.id), row.username]));
+      } catch {
+        usernamesById = new Map();
+      }
+    }
+
+    return rows.map((row) => {
+      const numericAccountId = Number(row.account);
+      const accountName = Number.isInteger(numericAccountId) && numericAccountId > 0
+        ? usernamesById.get(numericAccountId) ?? String(row.account)
+        : String(row.account);
+
+      return {
+        ...row,
+        account: accountName,
+      };
+    });
   } catch {
     return [];
   }
