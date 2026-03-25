@@ -5,6 +5,30 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+## [2.2.0] - 2026-03-25
+
+### Added
+
+- Keira3-inspired **Entity Editor workspace** with a dedicated editing column, generated SQL panel, and right-side live preview / related-data rail
+- Live entity preview cards for items, creatures, quests, and other supported entities, including quality colouring, summary stats, quick external reference links, and fetched visual reference media inside the app
+- Smart selector overlays for common reference fields so item, creature, and quest IDs can be searched and inserted without manual lookup
+- Related-data sections with quick **Load** actions for vendor, loot, and quest-linked rows so adjacent records can be opened directly from the current entity
+- Remote **Logs** tab with SSH/SFTP-backed `worldserver.conf` discovery, appender/logger parsing, packet-log path resolution, readable file detection, and in-app log tail preview
+- Live follow mode for remote log previews, including a persisted refresh interval and automatic polling pause when the Logs tab is inactive
+
+### Improved
+
+- Item previews now surface a much richer dossier, including stats, resistances, sockets, embedded spells, stack/container details, and other high-signal template data
+- Database entity editing flows now keep the live preview and related-data rail in sync while fields are being edited, giving the database tab a much more Keira-style feel
+
+### Fixed
+
+- Database and live-map database connection settings now save inside the selected connection profile instead of being shared outside profile state
+- Database table selection is more robust thanks to button-based table entries and delegated click handling in the table browser
+- Schema loading no longer fails on MySQL `DESCRIBE ??` syntax errors; table identifiers are now escaped explicitly before schema queries run
+
 ## [2.1.3] - 2026-03-23
 
 ### Fixed

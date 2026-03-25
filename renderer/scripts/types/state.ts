@@ -1,3 +1,5 @@
+import type { ConnectionProfile } from '../../../src/types/electron';
+
 // ── Application State Types ─────────────────────────────────────────────
 
 export interface PlayerInfo {
@@ -16,21 +18,6 @@ export interface PlayerInfo {
   className: string;
   raceId: number;
   classId: number;
-}
-
-export interface ConnectionProfile {
-  id: string;
-  name: string;
-  type: 'soap' | 'database';
-  config: {
-    host: string;
-    port: number;
-    username: string;
-    password: string;
-    database?: string;
-  };
-  createdAt: string;
-  updatedAt: string;
 }
 
 export interface ActivityLogEntry {

@@ -44,6 +44,77 @@ export interface SoapResult {
   message: string;
 }
 
+export interface LogMonitorConfig {
+  host: string;
+  port: number;
+  username: string;
+  password: string;
+  worldserverConfigPath: string;
+  liveFollow: boolean;
+  refreshIntervalSeconds: number;
+}
+
+export interface LogMonitorAppenderInfo {
+  name: string;
+  type: 'none' | 'console' | 'file' | 'db';
+  typeId: number;
+  logLevel: number;
+  logLevelLabel: string;
+  flags: number;
+  optionalValues: string[];
+  fileName: string | null;
+  mode: string | null;
+  maxFileSize: number | null;
+  resolvedPath: string | null;
+  isDynamicFile: boolean;
+  matchedDynamicFiles?: string[];
+}
+
+export interface LogMonitorLoggerInfo {
+  name: string;
+  logLevel: number;
+  logLevelLabel: string;
+  appenderNames: string[];
+  resolvedFiles: string[];
+}
+
+export interface LogMonitorFileInfo {
+  path: string;
+  name: string;
+  size: number | null;
+  modifiedAt: string | null;
+  readable: boolean;
+  sourceHints: string[];
+  matchedAppenderNames: string[];
+}
+
+export interface LogMonitorInspectionResult {
+  success: boolean;
+  message: string;
+  inspectedAt: string;
+  host: string;
+  port: number;
+  username: string;
+  configPath: string;
+  configDirectory: string;
+  logsDir: string | null;
+  resolvedLogsDir: string | null;
+  packetLogFile: string | null;
+  appenders: LogMonitorAppenderInfo[];
+  loggers: LogMonitorLoggerInfo[];
+  files: LogMonitorFileInfo[];
+  warnings: string[];
+}
+
+export interface LogMonitorFileTailResult {
+  success: boolean;
+  path: string;
+  content: string;
+  bytesRead: number;
+  truncated: boolean;
+  message: string;
+}
+
 export interface UpdateCheckResult {
   currentVersion: string;
   latestVersion: string | null;
@@ -55,13 +126,33 @@ export interface UpdateCheckResult {
   message: string;
 }
 
+export interface EntityMediaPreviewRequest {
+  entityType: string;
+  id: string;
+  displayIds?: number[];
+}
+
+export interface EntityMediaPreviewResult {
+  status: 'ready' | 'unsupported' | 'error';
+  sourceLabel: string;
+  sourceUrl: string | null;
+  imageUrl: string | null;
+  title: string | null;
+  summary: string | null;
+  message: string;
+}
+
 // ── Profile Types ──────────────────────────────────────────────────────────
 
 export interface ConnectionProfile {
   id: string;
   name: string;
-  type: 'soap' | 'database';
-  config: SoapConfig | DbConfig;
+  type?: 'soap' | 'database';
+  config?: SoapConfig | DbConfig;
+  soapConfig: SoapConfig;
+  databaseConfig: DbConfig;
+  mapDatabaseConfig: DbConfig;
+  logMonitorConfig: LogMonitorConfig;
   createdAt: string;
   updatedAt: string;
 }
@@ -73,7 +164,11 @@ export type IpcChannels = {
   'soap:connect': (config: SoapConfig) => SoapResult;
   'soap:command': (command: string) => SoapResult;
   'soap:disconnect': () => SoapResult;
+  'logs:inspect': (config: LogMonitorConfig) => LogMonitorInspectionResult;
+  'logs:readTail': (config: LogMonitorConfig, remotePath: string, maxBytes?: number) => LogMonitorFileTailResult;
   'app:getVersion': () => string;
+  'app:openExternal': (url: string) => SoapResult;
+  'app:getEntityMediaPreview': (request: EntityMediaPreviewRequest) => EntityMediaPreviewResult;
   'update:check': (force?: boolean) => UpdateCheckResult;
   'update:openReleasePage': (url?: string) => SoapResult;
   

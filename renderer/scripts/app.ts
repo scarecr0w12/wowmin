@@ -2,7 +2,7 @@
 import { ts, escapeHtml, showResult, debounce, getMapName, getZoneName, CLASS_COLORS, RACE_ICONS, RACE_NAMES, CLASS_NAMES } from './utils/helpers';
 import { CONTINENT_BOUNDS, worldToCanvas } from './utils/map-coords';
 import { AppState, createInitialState, PlayerInfo } from './types/state';
-import type { UpdateCheckResult } from '../../src/types/electron';
+import type { ConnectionProfile, DbConfig, SoapConfig, UpdateCheckResult, EntityMediaPreviewResult, LogMonitorConfig, LogMonitorInspectionResult } from '../../src/types/electron';
 
 // ── Application State ────────────────────────────────────────────────────
 const state: AppState = createInitialState();
@@ -31,11 +31,62 @@ const $btnOpenUpdate = $<HTMLButtonElement>('btn-open-update');
 
 let latestReleaseUrl: string | null = null;
 
+const DEFAULT_SOAP_PROFILE_CONFIG: SoapConfig = {
+  host: '127.0.0.1',
+  port: 7878,
+  username: '',
+  password: '',
+};
+
+const DEFAULT_DATABASE_PROFILE_CONFIG: DbConfig = {
+  host: '127.0.0.1',
+  port: 3306,
+  username: 'acore',
+  password: '',
+  database: 'acore_world',
+};
+
+const DEFAULT_MAP_DATABASE_PROFILE_CONFIG: DbConfig = {
+  host: '127.0.0.1',
+  port: 3306,
+  username: 'acore',
+  password: '',
+  database: 'acore_characters',
+};
+
+const DEFAULT_LOG_MONITOR_PROFILE_CONFIG: LogMonitorConfig = {
+  host: '127.0.0.1',
+  port: 22,
+  username: 'root',
+  password: '',
+  worldserverConfigPath: '/etc/azerothcore/worldserver.conf',
+  liveFollow: false,
+  refreshIntervalSeconds: 5,
+};
+
 // Profile elements
 const $profileSelect = $<HTMLSelectElement>('profile-select');
 const $btnSaveProfile = $<HTMLButtonElement>('btn-save-profile');
 const $btnUpdateProfile = $<HTMLButtonElement>('btn-update-profile');
 const $btnDeleteProfile = $<HTMLButtonElement>('btn-delete-profile');
+
+// Log monitor elements
+const $logHost = $<HTMLInputElement>('log-host');
+const $logPort = $<HTMLInputElement>('log-port');
+const $logUsername = $<HTMLInputElement>('log-username');
+const $logPassword = $<HTMLInputElement>('log-password');
+const $logConfigPath = $<HTMLInputElement>('log-config-path');
+const $logFollowEnabled = $<HTMLInputElement>('log-follow-enabled');
+const $logRefreshInterval = $<HTMLSelectElement>('log-refresh-interval');
+const $logScanBtn = $<HTMLButtonElement>('log-scan-btn');
+const $logRefreshPreviewBtn = $<HTMLButtonElement>('log-refresh-preview-btn');
+const $logStatus = $<HTMLElement>('log-status');
+const $logSummary = $<HTMLElement>('log-summary');
+const $logFilesList = $<HTMLElement>('log-files-list');
+const $logPreviewMeta = $<HTMLElement>('log-preview-meta');
+const $logPreviewOutput = $<HTMLElement>('log-preview-output');
+const $logAppendersTable = $<HTMLElement>('log-appenders-table');
+const $logLoggersTable = $<HTMLElement>('log-loggers-table');
 
 // Modal elements
 const $modalOverlay = $<HTMLElement>('modal-overlay');
@@ -76,6 +127,22 @@ interface ModalOptions {
   defaultValue?: string;
   showInput?: boolean;
 }
+
+interface LogMonitorViewState {
+  inspection: LogMonitorInspectionResult | null;
+  selectedFilePath: string | null;
+  followTimer: ReturnType<typeof setTimeout> | null;
+  previewRequestToken: number;
+  previewInFlight: boolean;
+}
+
+const logMonitorState: LogMonitorViewState = {
+  inspection: null,
+  selectedFilePath: null,
+  followTimer: null,
+  previewRequestToken: 0,
+  previewInFlight: false,
+};
 
 function showModal(options: ModalOptions): Promise<string | boolean | null> {
   const { title, message = '', defaultValue = '', showInput = false } = options;
@@ -194,6 +261,173 @@ function renderUpdateStatus(result: UpdateCheckResult): void {
   }
 }
 
+function inferDatabaseType(databaseName: string): 'world' | 'auth' | 'characters' {
+  if (/auth/i.test(databaseName)) return 'auth';
+  if (/characters/i.test(databaseName)) return 'characters';
+  return 'world';
+}
+
+function getCurrentSoapProfileConfig(): SoapConfig {
+  return {
+    host: $host?.value.trim() || DEFAULT_SOAP_PROFILE_CONFIG.host,
+    port: Number($port?.value.trim() || String(DEFAULT_SOAP_PROFILE_CONFIG.port)),
+    username: $username?.value.trim() || DEFAULT_SOAP_PROFILE_CONFIG.username,
+    password: $password?.value.trim() || DEFAULT_SOAP_PROFILE_CONFIG.password,
+  };
+}
+
+function getCurrentDatabaseProfileConfig(): DbConfig {
+  return {
+    host: $dbHost?.value.trim() || DEFAULT_DATABASE_PROFILE_CONFIG.host,
+    port: Number($dbPort?.value.trim() || String(DEFAULT_DATABASE_PROFILE_CONFIG.port)),
+    username: $dbUser?.value.trim() || DEFAULT_DATABASE_PROFILE_CONFIG.username,
+    password: $dbPassword?.value || DEFAULT_DATABASE_PROFILE_CONFIG.password,
+    database: $dbName?.value.trim() || DEFAULT_DATABASE_PROFILE_CONFIG.database,
+  };
+}
+
+function getCurrentMapDatabaseProfileConfig(): DbConfig {
+  return {
+    host: $<HTMLInputElement>('map-db-host')?.value.trim() || DEFAULT_MAP_DATABASE_PROFILE_CONFIG.host,
+    port: Number($<HTMLInputElement>('map-db-port')?.value.trim() || String(DEFAULT_MAP_DATABASE_PROFILE_CONFIG.port)),
+    username: $<HTMLInputElement>('map-db-user')?.value.trim() || DEFAULT_MAP_DATABASE_PROFILE_CONFIG.username,
+    password: $<HTMLInputElement>('map-db-pass')?.value || DEFAULT_MAP_DATABASE_PROFILE_CONFIG.password,
+    database: $<HTMLInputElement>('map-db-name')?.value.trim() || DEFAULT_MAP_DATABASE_PROFILE_CONFIG.database,
+  };
+}
+
+function getCurrentLogMonitorProfileConfig(): LogMonitorConfig {
+  return {
+    host: $logHost?.value.trim() || DEFAULT_LOG_MONITOR_PROFILE_CONFIG.host,
+    port: Number($logPort?.value.trim() || String(DEFAULT_LOG_MONITOR_PROFILE_CONFIG.port)),
+    username: $logUsername?.value.trim() || DEFAULT_LOG_MONITOR_PROFILE_CONFIG.username,
+    password: $logPassword?.value || DEFAULT_LOG_MONITOR_PROFILE_CONFIG.password,
+    worldserverConfigPath: $logConfigPath?.value.trim() || DEFAULT_LOG_MONITOR_PROFILE_CONFIG.worldserverConfigPath,
+    liveFollow: $logFollowEnabled?.checked ?? DEFAULT_LOG_MONITOR_PROFILE_CONFIG.liveFollow,
+    refreshIntervalSeconds: Number($logRefreshInterval?.value || String(DEFAULT_LOG_MONITOR_PROFILE_CONFIG.refreshIntervalSeconds)),
+  };
+}
+
+function applySoapProfileConfig(config: Partial<SoapConfig> | undefined): void {
+  const nextConfig = { ...DEFAULT_SOAP_PROFILE_CONFIG, ...config };
+  if ($host) $host.value = nextConfig.host;
+  if ($port) $port.value = String(nextConfig.port);
+  if ($username) $username.value = nextConfig.username;
+  if ($password) $password.value = nextConfig.password;
+}
+
+function applyDatabaseProfileConfig(config: Partial<DbConfig> | undefined): void {
+  const nextConfig = { ...DEFAULT_DATABASE_PROFILE_CONFIG, ...config };
+  if ($dbType) $dbType.value = inferDatabaseType(nextConfig.database);
+  if ($dbHost) $dbHost.value = nextConfig.host;
+  if ($dbPort) $dbPort.value = String(nextConfig.port);
+  if ($dbUser) $dbUser.value = nextConfig.username;
+  if ($dbPassword) $dbPassword.value = nextConfig.password;
+  if ($dbName) $dbName.value = nextConfig.database;
+}
+
+function applyMapDatabaseProfileConfig(config: Partial<DbConfig> | undefined): void {
+  const nextConfig = { ...DEFAULT_MAP_DATABASE_PROFILE_CONFIG, ...config };
+  const $mapDbHost = $<HTMLInputElement>('map-db-host');
+  const $mapDbPort = $<HTMLInputElement>('map-db-port');
+  const $mapDbUser = $<HTMLInputElement>('map-db-user');
+  const $mapDbPass = $<HTMLInputElement>('map-db-pass');
+  const $mapDbName = $<HTMLInputElement>('map-db-name');
+
+  if ($mapDbHost) $mapDbHost.value = nextConfig.host;
+  if ($mapDbPort) $mapDbPort.value = String(nextConfig.port);
+  if ($mapDbUser) $mapDbUser.value = nextConfig.username;
+  if ($mapDbPass) $mapDbPass.value = nextConfig.password;
+  if ($mapDbName) $mapDbName.value = nextConfig.database;
+}
+
+function applyLogMonitorProfileConfig(config: Partial<LogMonitorConfig> | undefined): void {
+  const nextConfig = { ...DEFAULT_LOG_MONITOR_PROFILE_CONFIG, ...config };
+  if ($logHost) $logHost.value = nextConfig.host;
+  if ($logPort) $logPort.value = String(nextConfig.port);
+  if ($logUsername) $logUsername.value = nextConfig.username;
+  if ($logPassword) $logPassword.value = nextConfig.password;
+  if ($logConfigPath) $logConfigPath.value = nextConfig.worldserverConfigPath;
+  if ($logFollowEnabled) $logFollowEnabled.checked = nextConfig.liveFollow;
+  if ($logRefreshInterval) $logRefreshInterval.value = String(nextConfig.refreshIntervalSeconds);
+  updateLogFollowControls();
+}
+
+function stopLogFollowLoop(): void {
+  if (logMonitorState.followTimer) {
+    clearTimeout(logMonitorState.followTimer);
+    logMonitorState.followTimer = null;
+  }
+}
+
+function isLogsTabActive(): boolean {
+  return document.querySelector<HTMLButtonElement>('#tab-bar .tab.active')?.dataset.tab === 'logs';
+}
+
+function getLogRefreshIntervalMs(): number {
+  const seconds = Number($logRefreshInterval?.value || DEFAULT_LOG_MONITOR_PROFILE_CONFIG.refreshIntervalSeconds);
+  return Math.max(2, Number.isFinite(seconds) ? seconds : DEFAULT_LOG_MONITOR_PROFILE_CONFIG.refreshIntervalSeconds) * 1000;
+}
+
+function isLogFollowEnabled(): boolean {
+  return Boolean($logFollowEnabled?.checked);
+}
+
+function shouldPollLogFollow(): boolean {
+  return isLogFollowEnabled() && isLogsTabActive() && Boolean(logMonitorState.selectedFilePath);
+}
+
+function updateLogFollowControls(): void {
+  if ($logRefreshInterval) {
+    $logRefreshInterval.disabled = !isLogFollowEnabled();
+  }
+}
+
+function scheduleLogFollowRefresh(delayMs = getLogRefreshIntervalMs()): void {
+  stopLogFollowLoop();
+  if (!shouldPollLogFollow()) {
+    return;
+  }
+
+  logMonitorState.followTimer = setTimeout(() => {
+    if (!logMonitorState.selectedFilePath) return;
+    if (logMonitorState.previewInFlight) {
+      scheduleLogFollowRefresh();
+      return;
+    }
+    void loadLogPreview(logMonitorState.selectedFilePath, { silent: true });
+  }, delayMs);
+}
+
+function syncLogFollowPolling(immediate = false): void {
+  updateLogFollowControls();
+
+  if (!shouldPollLogFollow()) {
+    stopLogFollowLoop();
+    return;
+  }
+
+  if (immediate) {
+    scheduleLogFollowRefresh(0);
+    return;
+  }
+
+  scheduleLogFollowRefresh();
+}
+
+function resetLogMonitorView(message = 'Scan a server to see readable log files.'): void {
+  stopLogFollowLoop();
+  logMonitorState.inspection = null;
+  logMonitorState.selectedFilePath = null;
+  renderLogInspection(null);
+  if ($logPreviewMeta) $logPreviewMeta.textContent = 'No file selected.';
+  if ($logPreviewOutput) $logPreviewOutput.textContent = 'Select a readable file to preview its latest output.';
+  if ($logStatus) {
+    $logStatus.textContent = message;
+    $logStatus.className = 'action-result';
+  }
+}
+
 async function refreshUpdateStatus(force = false): Promise<void> {
   if ($updateBanner) {
     $updateBanner.dataset.status = 'checking';
@@ -240,6 +474,8 @@ $$<HTMLButtonElement>('#tab-bar .tab').forEach((btn) => {
       const tabContent = $(`tab-${tabId}`);
       tabContent?.classList.add('active');
     }
+
+    syncLogFollowPolling();
   });
 });
 
@@ -1016,6 +1252,12 @@ async function loadProfiles(): Promise<void> {
   }
 }
 
+function updateProfileButtons(): void {
+  const hasSelectedProfile = Boolean($profileSelect?.value);
+  if ($btnUpdateProfile) $btnUpdateProfile.disabled = !hasSelectedProfile;
+  if ($btnDeleteProfile) $btnDeleteProfile.disabled = !hasSelectedProfile;
+}
+
 function renderProfiles(): void {
   if (!$profileSelect) return;
   
@@ -1030,17 +1272,21 @@ function renderProfiles(): void {
     }
     $profileSelect.appendChild(opt);
   }
+
+  updateProfileButtons();
 }
 
 function loadProfileConfig(profile: ConnectionProfile): void {
-  if ($host) $host.value = profile.config.host;
-  if ($port) $port.value = String(profile.config.port);
-  if ($username) $username.value = profile.config.username;
-  if ($password) $password.value = profile.config.password;
+  applySoapProfileConfig(profile.soapConfig);
+  applyDatabaseProfileConfig(profile.databaseConfig);
+  applyMapDatabaseProfileConfig(profile.mapDatabaseConfig);
+  applyLogMonitorProfileConfig(profile.logMonitorConfig);
+  resetLogMonitorView('Loaded profile settings. Run a fresh log scan to inspect this server.');
 }
 
 $profileSelect?.addEventListener('change', async () => {
   const id = $profileSelect.value;
+  updateProfileButtons();
   if (!id) return;
   
   const profile = state.profiles.find((p) => p.id === id);
@@ -1063,15 +1309,36 @@ $btnSaveProfile?.addEventListener('click', async () => {
   const profile = await window.electronAPI.config.addProfile({
     name: name.trim(),
     type: 'soap',
-    config: {
-      host: $host?.value.trim() || '127.0.0.1',
-      port: Number($port?.value.trim() || '7878'),
-      username: $username?.value.trim() || '',
-      password: $password?.value.trim() || '',
-    },
+    config: getCurrentSoapProfileConfig(),
+    soapConfig: getCurrentSoapProfileConfig(),
+    databaseConfig: getCurrentDatabaseProfileConfig(),
+    mapDatabaseConfig: getCurrentMapDatabaseProfileConfig(),
+    logMonitorConfig: getCurrentLogMonitorProfileConfig(),
   });
   
   state.profiles.push(profile);
+  state.activeProfileId = profile.id;
+  await window.electronAPI.config.setActiveProfile(profile.id);
+  renderProfiles();
+});
+
+$btnUpdateProfile?.addEventListener('click', async () => {
+  const id = $profileSelect?.value;
+  if (!id) return;
+
+  const updatedProfile = await window.electronAPI.config.updateProfile(id, {
+    config: getCurrentSoapProfileConfig(),
+    soapConfig: getCurrentSoapProfileConfig(),
+    databaseConfig: getCurrentDatabaseProfileConfig(),
+    mapDatabaseConfig: getCurrentMapDatabaseProfileConfig(),
+    logMonitorConfig: getCurrentLogMonitorProfileConfig(),
+  });
+
+  if (!updatedProfile) return;
+
+  state.profiles = state.profiles.map((profile) => (profile.id === id ? updatedProfile : profile));
+  state.activeProfileId = id;
+  await window.electronAPI.config.setActiveProfile(id);
   renderProfiles();
 });
 
@@ -1098,6 +1365,275 @@ $btnDeleteProfile?.addEventListener('click', async () => {
 loadProfiles();
 
 // ═══════════════════════════════════════════════════════════════════════════
+// LOG MONITOR TAB
+// ═══════════════════════════════════════════════════════════════════════════
+
+function formatFileSize(bytes: number | null): string {
+  if (bytes === null || !Number.isFinite(bytes)) return '—';
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`;
+}
+
+function formatTimestamp(value: string | null): string {
+  if (!value) return '—';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return `${date.toLocaleDateString()} ${date.toLocaleTimeString()}`;
+}
+
+function renderLogSummary(result: LogMonitorInspectionResult | null): void {
+  if (!$logSummary) return;
+
+  if (!result) {
+    $logSummary.innerHTML = '<p class="placeholder">Connect to a server over SSH/SFTP and scan <code>worldserver.conf</code> to discover configured loggers, appenders, and readable log files.</p>';
+    return;
+  }
+
+  const readableCount = result.files.filter((file) => file.readable).length;
+  const warningHtml = result.warnings.length
+    ? `<div class="log-monitor-warning-list">${result.warnings.map((warning) => `<div class="log-monitor-warning">${escapeHtml(warning)}</div>`).join('')}</div>`
+    : '<div class="log-monitor-good">No scan warnings. The logging gremlins are behaving.</div>';
+
+  $logSummary.innerHTML = `
+    <div class="log-monitor-summary-grid">
+      <div class="log-summary-chip"><span>Config</span><strong>${escapeHtml(result.configPath)}</strong></div>
+      <div class="log-summary-chip"><span>Logs Dir</span><strong>${escapeHtml(result.resolvedLogsDir || result.logsDir || '—')}</strong></div>
+      <div class="log-summary-chip"><span>Appenders</span><strong>${result.appenders.length}</strong></div>
+      <div class="log-summary-chip"><span>Loggers</span><strong>${result.loggers.length}</strong></div>
+      <div class="log-summary-chip"><span>Readable Files</span><strong>${readableCount}</strong></div>
+      <div class="log-summary-chip"><span>Scanned</span><strong>${escapeHtml(formatTimestamp(result.inspectedAt))}</strong></div>
+    </div>
+    ${warningHtml}
+  `;
+}
+
+function renderLogFileList(result: LogMonitorInspectionResult | null): void {
+  if (!$logFilesList) return;
+
+  if (!result) {
+    $logFilesList.innerHTML = '<p class="placeholder">Scan a server to see readable log files.</p>';
+    return;
+  }
+
+  const files = result.files;
+  if (!files.length) {
+    $logFilesList.innerHTML = '<p class="placeholder">No log files were discovered from the current configuration.</p>';
+    return;
+  }
+
+  $logFilesList.innerHTML = files.map((file) => {
+    const selected = logMonitorState.selectedFilePath === file.path;
+    const stateClass = file.readable ? 'is-readable' : 'is-unreadable';
+    const sources = [...new Set([...file.sourceHints, ...file.matchedAppenderNames])].join(' · ') || 'discovered';
+    return `<button type="button" class="log-file-item ${stateClass} ${selected ? 'selected' : ''}" data-log-file-path="${escapeHtml(file.path)}" ${file.readable ? '' : 'disabled'}>
+      <span class="log-file-name">${escapeHtml(file.name)}</span>
+      <span class="log-file-meta">${escapeHtml(file.path)}</span>
+      <span class="log-file-meta">${escapeHtml(formatFileSize(file.size))} · ${escapeHtml(formatTimestamp(file.modifiedAt))}</span>
+      <span class="log-file-tags">${escapeHtml(sources)}</span>
+    </button>`;
+  }).join('');
+}
+
+function renderAppenderTable(result: LogMonitorInspectionResult | null): void {
+  if (!$logAppendersTable) return;
+
+  if (!result || !result.appenders.length) {
+    $logAppendersTable.innerHTML = '<p class="placeholder">Appender details will appear here after a scan.</p>';
+    return;
+  }
+
+  $logAppendersTable.innerHTML = `
+    <table class="log-monitor-table">
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Level</th>
+          <th>Flags</th>
+          <th>File</th>
+          <th>Resolved Path</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${result.appenders.map((appender) => `
+          <tr>
+            <td>${escapeHtml(appender.name)}</td>
+            <td>${escapeHtml(appender.type)}</td>
+            <td>${escapeHtml(appender.logLevelLabel)}</td>
+            <td>${escapeHtml(String(appender.flags))}</td>
+            <td>${escapeHtml(appender.fileName || (appender.optionalValues[0] || '—'))}</td>
+            <td>${escapeHtml(appender.resolvedPath || (appender.matchedDynamicFiles?.join(', ') || '—'))}</td>
+          </tr>`).join('')}
+      </tbody>
+    </table>`;
+}
+
+function renderLoggerTable(result: LogMonitorInspectionResult | null): void {
+  if (!$logLoggersTable) return;
+
+  if (!result || !result.loggers.length) {
+    $logLoggersTable.innerHTML = '<p class="placeholder">Logger mappings will appear here after a scan.</p>';
+    return;
+  }
+
+  $logLoggersTable.innerHTML = `
+    <table class="log-monitor-table">
+      <thead>
+        <tr>
+          <th>Logger</th>
+          <th>Level</th>
+          <th>Appenders</th>
+          <th>Resolved Files</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${result.loggers.map((logger) => `
+          <tr>
+            <td>${escapeHtml(logger.name)}</td>
+            <td>${escapeHtml(logger.logLevelLabel)}</td>
+            <td>${escapeHtml(logger.appenderNames.join(', ') || '—')}</td>
+            <td>${escapeHtml(logger.resolvedFiles.join(', ') || '—')}</td>
+          </tr>`).join('')}
+      </tbody>
+    </table>`;
+}
+
+function renderLogPreviewPlaceholder(message: string): void {
+  if ($logPreviewMeta) $logPreviewMeta.textContent = message;
+  if ($logPreviewOutput) {
+    $logPreviewOutput.textContent = isLogFollowEnabled()
+      ? 'Select a readable file to preview its latest output. Live follow will start automatically for the selected file.'
+      : 'Select a readable file to preview its latest output.';
+  }
+}
+
+function renderLogInspection(result: LogMonitorInspectionResult | null): void {
+  renderLogSummary(result);
+  renderLogFileList(result);
+  renderAppenderTable(result);
+  renderLoggerTable(result);
+
+  if (!result?.files.some((file) => file.path === logMonitorState.selectedFilePath && file.readable)) {
+    logMonitorState.selectedFilePath = null;
+    renderLogPreviewPlaceholder('No file selected.');
+    if ($logRefreshPreviewBtn) $logRefreshPreviewBtn.disabled = true;
+  }
+
+  syncLogFollowPolling();
+}
+
+async function loadLogPreview(filePath: string, options: { silent?: boolean } = {}): Promise<void> {
+  const config = getCurrentLogMonitorProfileConfig();
+  const { silent = false } = options;
+  stopLogFollowLoop();
+  logMonitorState.selectedFilePath = filePath;
+  renderLogFileList(logMonitorState.inspection);
+
+  const requestToken = ++logMonitorState.previewRequestToken;
+  logMonitorState.previewInFlight = true;
+
+  if ($logPreviewMeta) $logPreviewMeta.textContent = `${silent ? 'Refreshing' : 'Loading'} ${filePath}…`;
+  if (!silent && $logPreviewOutput) $logPreviewOutput.textContent = 'Fetching the latest log tail…';
+  if ($logRefreshPreviewBtn) $logRefreshPreviewBtn.disabled = true;
+
+  try {
+    const result = await window.electronAPI.logs.readTail(config, filePath, 48 * 1024);
+    if (requestToken !== logMonitorState.previewRequestToken) {
+      return;
+    }
+
+    if (result.success) {
+      if ($logPreviewMeta) {
+        const followLabel = isLogFollowEnabled() ? ` · live every ${Math.round(getLogRefreshIntervalMs() / 1000)}s` : '';
+        $logPreviewMeta.textContent = `${result.path} · ${result.message}${followLabel}`;
+      }
+      if ($logPreviewOutput) {
+        $logPreviewOutput.textContent = result.content || '(file is empty)';
+      }
+    } else {
+      if ($logPreviewMeta) {
+        const retryLabel = shouldPollLogFollow() ? ` · retrying in ${Math.round(getLogRefreshIntervalMs() / 1000)}s` : '';
+        $logPreviewMeta.textContent = `${result.path}${retryLabel}`;
+      }
+      if ($logPreviewOutput) $logPreviewOutput.textContent = result.message;
+    }
+
+    if ($logRefreshPreviewBtn) $logRefreshPreviewBtn.disabled = !result.success;
+  } finally {
+    if (requestToken === logMonitorState.previewRequestToken) {
+      logMonitorState.previewInFlight = false;
+      syncLogFollowPolling();
+    }
+  }
+}
+
+async function scanRemoteLogs(): Promise<void> {
+  const config = getCurrentLogMonitorProfileConfig();
+  if (!config.host || !config.username || !config.worldserverConfigPath) {
+    showResult($logStatus, false, 'Host, username, and worldserver.conf path are required.');
+    return;
+  }
+
+  stopLogFollowLoop();
+  if ($logScanBtn) $logScanBtn.disabled = true;
+  if ($logRefreshPreviewBtn) $logRefreshPreviewBtn.disabled = true;
+  showResult($logStatus, false, 'Scanning remote worldserver.conf and log paths…');
+
+  const result = await window.electronAPI.logs.inspect(config);
+  logMonitorState.inspection = result;
+  renderLogInspection(result);
+  showResult($logStatus, result.success, result.message);
+
+  if (result.success) {
+    const firstReadableFile = result.files.find((file) => file.readable);
+    if (firstReadableFile) {
+      await loadLogPreview(firstReadableFile.path);
+    }
+  }
+
+  if ($logScanBtn) $logScanBtn.disabled = false;
+}
+
+$logScanBtn?.addEventListener('click', () => {
+  void scanRemoteLogs();
+});
+
+$logRefreshPreviewBtn?.addEventListener('click', () => {
+  if (!logMonitorState.selectedFilePath) return;
+  void loadLogPreview(logMonitorState.selectedFilePath);
+});
+
+$logFollowEnabled?.addEventListener('change', () => {
+  updateLogFollowControls();
+  syncLogFollowPolling(true);
+});
+
+$logRefreshInterval?.addEventListener('change', () => {
+  syncLogFollowPolling();
+  if (logMonitorState.selectedFilePath && isLogFollowEnabled() && !$logRefreshPreviewBtn?.disabled) {
+    if ($logPreviewMeta) {
+      $logPreviewMeta.textContent = `${logMonitorState.selectedFilePath} · live every ${Math.round(getLogRefreshIntervalMs() / 1000)}s`;
+    }
+  }
+});
+
+[$logHost, $logPort, $logUsername, $logPassword, $logConfigPath].forEach((element) => {
+  element?.addEventListener('change', () => {
+    stopLogFollowLoop();
+  });
+});
+
+$logFilesList?.addEventListener('click', (event) => {
+  const button = (event.target as HTMLElement).closest<HTMLButtonElement>('[data-log-file-path]');
+  if (!button) return;
+  const filePath = button.dataset.logFilePath;
+  if (!filePath) return;
+  void loadLogPreview(filePath);
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
 // DATABASE TAB FUNCTIONALITY
 // ═══════════════════════════════════════════════════════════════════════════
 
@@ -1120,9 +1656,19 @@ interface DatabaseState {
   entityCurrentData: Record<string, unknown> | null;
   entitySqlMode: 'diff' | 'full';
   entityIsNew: boolean;
+  entityRenderVersion: number;
   // Flags selector state
   flagsFieldName: string | null;
   flagsInputEl: HTMLInputElement | null;
+  selectorFieldName: string | null;
+  selectorInputEl: HTMLInputElement | null;
+  selectorEntityType: string | null;
+  selectorSearchToken: number;
+  entityMediaKey: string | null;
+  entityMediaPreview: EntityMediaPreviewResult | null;
+  entityMediaStatus: 'idle' | 'loading' | 'ready' | 'unsupported' | 'error';
+  entityMediaMessage: string | null;
+  entityMediaToken: number;
 }
 
 const dbState: DatabaseState = {
@@ -1142,8 +1688,18 @@ const dbState: DatabaseState = {
   entityCurrentData: null,
   entitySqlMode: 'diff',
   entityIsNew: false,
+  entityRenderVersion: 0,
   flagsFieldName: null,
   flagsInputEl: null,
+  selectorFieldName: null,
+  selectorInputEl: null,
+  selectorEntityType: null,
+  selectorSearchToken: 0,
+  entityMediaKey: null,
+  entityMediaPreview: null,
+  entityMediaStatus: 'idle',
+  entityMediaMessage: null,
+  entityMediaToken: 0,
 };
 
 // Database DOM elements
@@ -1182,11 +1738,19 @@ const $entityEditorContent = $<HTMLElement>('entity-editor-content');
 const $entitySqlCode = $<HTMLElement>('entity-sql-code');
 const $entityCopySqlBtn = $<HTMLButtonElement>('entity-copy-sql-btn');
 const $entityApplySqlBtn = $<HTMLButtonElement>('entity-apply-sql-btn');
+const $entityPreviewContent = $<HTMLElement>('entity-preview-content');
+const $entityRelationsContent = $<HTMLElement>('entity-relations-content');
 const $tableRefreshBtn = $<HTMLButtonElement>('table-refresh-btn');
 const $flagsOverlay = $<HTMLElement>('flags-overlay');
 const $flagsGrid = $<HTMLElement>('flags-grid');
 const $flagsApplyBtn = $<HTMLButtonElement>('flags-apply-btn');
 const $flagsCancelBtn = $<HTMLButtonElement>('flags-cancel-btn');
+const $selectorOverlay = $<HTMLElement>('selector-overlay');
+const $selectorDialogTitle = $<HTMLElement>('selector-dialog-title');
+const $selectorDialogSubtitle = $<HTMLElement>('selector-dialog-subtitle');
+const $selectorSearchInput = $<HTMLInputElement>('selector-search-input');
+const $selectorResults = $<HTMLElement>('selector-results');
+const $selectorCloseBtn = $<HTMLButtonElement>('selector-close-btn');
 
 // Update database name based on type selection
 $dbType?.addEventListener('change', () => {
@@ -1206,7 +1770,7 @@ $dbConnectBtn?.addEventListener('click', async () => {
   const config = {
     host: $dbHost?.value.trim() || '127.0.0.1',
     port: Number($dbPort?.value.trim() || '3306'),
-    user: $dbUser?.value.trim() || 'acore',
+    username: $dbUser?.value.trim() || 'acore',
     password: $dbPassword?.value || '',
     database: $dbName?.value.trim() || 'acore_world',
   };
@@ -1296,20 +1860,15 @@ function renderTableList(tables: string[]): void {
   
   const searchTerm = $dbTableSearch?.value.toLowerCase() || '';
   const filtered = tables.filter(t => t.toLowerCase().includes(searchTerm));
+
+  if (!filtered.length) {
+    $dbTableList!.innerHTML = '<p class="text-dark-text-muted text-sm p-2">No matching tables</p>';
+    return;
+  }
   
   $dbTableList!.innerHTML = filtered.map(table => 
-    `<div class="db-table-item${dbState.currentTable === table ? ' active' : ''}" data-table="${table}">${escapeHtml(table)}</div>`
+    `<button type="button" class="db-table-item${dbState.currentTable === table ? ' active' : ''}" data-table="${table}" title="Open ${escapeHtml(table)}">${escapeHtml(table)}</button>`
   ).join('');
-  
-  // Add click handlers
-  $dbTableList!.querySelectorAll('.db-table-item').forEach(item => {
-    item.addEventListener('click', () => {
-      const tableName = item.getAttribute('data-table');
-      if (tableName) {
-        selectTable(tableName);
-      }
-    });
-  });
 }
 
 // Select a table
@@ -1443,6 +2002,16 @@ function updateTablePagination(): void {
 
 // Refresh tables button
 $dbRefreshTables?.addEventListener('click', loadDatabaseTables);
+
+$dbTableList?.addEventListener('click', (event) => {
+  const target = (event.target as HTMLElement).closest<HTMLElement>('.db-table-item[data-table]');
+  if (!target) return;
+
+  const tableName = target.dataset.table;
+  if (tableName) {
+    void selectTable(tableName);
+  }
+});
 
 // Refresh table data button
 $tableRefreshBtn?.addEventListener('click', async () => {
@@ -1815,6 +2384,798 @@ const FLAG_DEFS: Record<string, FlagDef[]> = {
   ],
 };
 
+const ITEM_QUALITY_META: Record<number, { label: string; color: string; cssClass: string }> = {
+  0: { label: 'Poor', color: '#9d9d9d', cssClass: 'quality-poor' },
+  1: { label: 'Common', color: '#ffffff', cssClass: 'quality-common' },
+  2: { label: 'Uncommon', color: '#1eff00', cssClass: 'quality-uncommon' },
+  3: { label: 'Rare', color: '#0070dd', cssClass: 'quality-rare' },
+  4: { label: 'Epic', color: '#a335ee', cssClass: 'quality-epic' },
+  5: { label: 'Legendary', color: '#ff8000', cssClass: 'quality-legendary' },
+  6: { label: 'Artifact', color: '#e6cc80', cssClass: 'quality-artifact' },
+  7: { label: 'Heirloom', color: '#00ccff', cssClass: 'quality-heirloom' },
+};
+
+const CREATURE_RANK_LABELS: Record<number, string> = {
+  0: 'Normal',
+  1: 'Elite',
+  2: 'Rare Elite',
+  3: 'World Boss',
+  4: 'Rare',
+};
+
+const CREATURE_TYPE_LABELS: Record<number, string> = {
+  0: 'None',
+  1: 'Beast',
+  2: 'Dragonkin',
+  3: 'Demon',
+  4: 'Elemental',
+  5: 'Giant',
+  6: 'Undead',
+  7: 'Humanoid',
+  8: 'Critter',
+  9: 'Mechanical',
+  10: 'Not Specified',
+  11: 'Totem',
+  12: 'Non-Combat Pet',
+  13: 'Gas Cloud',
+};
+
+const ITEM_CLASS_LABELS: Record<number, string> = {
+  0: 'Consumable',
+  1: 'Container',
+  2: 'Weapon',
+  3: 'Gem',
+  4: 'Armor',
+  5: 'Reagent',
+  6: 'Projectile',
+  7: 'Trade Goods',
+  9: 'Recipe',
+  11: 'Quiver',
+  12: 'Quest',
+  13: 'Key',
+  15: 'Miscellaneous',
+  16: 'Glyph',
+};
+
+const ITEM_STAT_LABELS: Record<number, string> = {
+  3: 'Agility',
+  4: 'Strength',
+  5: 'Intellect',
+  6: 'Spirit',
+  7: 'Stamina',
+  12: 'Defense Rating',
+  13: 'Dodge Rating',
+  14: 'Parry Rating',
+  15: 'Block Rating',
+  16: 'Hit Melee Rating',
+  17: 'Hit Ranged Rating',
+  18: 'Hit Spell Rating',
+  19: 'Crit Melee Rating',
+  20: 'Crit Ranged Rating',
+  21: 'Crit Spell Rating',
+  28: 'Haste Melee Rating',
+  29: 'Haste Ranged Rating',
+  30: 'Haste Spell Rating',
+  31: 'Hit Rating',
+  32: 'Crit Rating',
+  35: 'Resilience',
+  36: 'Haste Rating',
+  37: 'Expertise Rating',
+  38: 'Attack Power',
+  45: 'Spell Power',
+};
+
+const ENTITY_FIELD_HINTS: Record<string, string> = {
+  entry: 'Primary entry or template ID for this entity.',
+  ID: 'Primary identifier for this entity.',
+  name: 'Visible name shown in-game.',
+  subname: 'Subtitle or title shown beneath the creature nameplate.',
+  displayid: 'DisplayInfo / visual display entry used for item appearance references.',
+  modelid1: 'Primary creature model display ID.',
+  modelid2: 'Alternate creature model display ID.',
+  modelid3: 'Additional creature model display ID.',
+  modelid4: 'Additional creature model display ID.',
+  scale: 'Visual scale multiplier applied to the model.',
+  npcflag: 'Bitmask describing gossip, vendor, trainer, banker, and other NPC interactions.',
+  unit_flags: 'Bitmask with combat and selection state flags for the unit.',
+  unit_flags2: 'Additional unit bitmask flags used for special behaviour.',
+  flags_extra: 'Extra server-side flags affecting combat logic and interactions.',
+  dynamicflags: 'Runtime flags controlling lootable, tapped, dead, and other live states.',
+  type_flags: 'Creature-type feature flags such as tameable or boss mob.',
+  Quality: 'Item rarity tier used for colour, drop expectations, and UI presentation.',
+  ItemLevel: 'Internal power budget of the item.',
+  RequiredLevel: 'Minimum character level needed to equip or use the item.',
+  BuyPrice: 'Vendor purchase price stored in copper.',
+  SellPrice: 'Vendor sell price stored in copper.',
+  QuestLevel: 'Displayed quest level in the quest log.',
+  MinLevel: 'Minimum player level required to accept the quest.',
+  Flags: 'Quest behaviour flags such as sharable, daily, or auto-complete.',
+  SpecialFlags: 'Additional quest flags for repeatability and server-side behaviours.',
+  RewardMoney: 'Base quest reward in copper.',
+  RewardXPDifficulty: 'Quest XP scalar bucket used by the core.',
+  gossip_menu_id: 'Links this creature to a gossip menu.',
+  faction: 'Faction template ID controlling hostility and reactions.',
+};
+
+interface SelectorSpec {
+  entityType: 'item' | 'creature' | 'quest';
+  label: string;
+  subtitle: string;
+}
+
+function getSelectorSpec(fieldName: string): SelectorSpec | null {
+  if (/^(RewardItem\d+|RewardChoiceItemId\d+|RequiredItemId\d+|StartItem|item|Item)$/i.test(fieldName)) {
+    return {
+      entityType: 'item',
+      label: 'Select Item',
+      subtitle: 'Search item_template by entry or name and apply the selected item ID.',
+    };
+  }
+
+  if (/^(KillCredit\d+|entry)$/i.test(fieldName)) {
+    return {
+      entityType: 'creature',
+      label: 'Select Creature',
+      subtitle: 'Search creature_template by entry or creature name.',
+    };
+  }
+
+  if (/^(ID|quest)$/i.test(fieldName)) {
+    return {
+      entityType: 'quest',
+      label: 'Select Quest',
+      subtitle: 'Search quest_template by quest ID or log title.',
+    };
+  }
+
+  return null;
+}
+
+interface EntityPreviewLink {
+  label: string;
+  url: string;
+  tone?: 'accent' | 'neutral';
+}
+
+function toNumber(value: unknown, fallback = 0): number {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function getItemQualityMeta(value: unknown): { label: string; color: string; cssClass: string } {
+  return ITEM_QUALITY_META[toNumber(value, 1)] ?? ITEM_QUALITY_META[1];
+}
+
+function formatCopper(value: unknown): string {
+  const copper = Math.max(0, Math.round(toNumber(value)));
+  const gold = Math.floor(copper / 10000);
+  const silver = Math.floor((copper % 10000) / 100);
+  const remainder = copper % 100;
+  const parts = [];
+  if (gold) parts.push(`${gold}g`);
+  if (silver || gold) parts.push(`${silver}s`);
+  parts.push(`${remainder}c`);
+  return parts.join(' ');
+}
+
+function summarizeFlags(fieldName: string, value: unknown, max = 4): string[] {
+  const defs = FLAG_DEFS[fieldName];
+  if (!defs) return [];
+
+  const numericValue = toNumber(value);
+  return defs.filter((flag) => (numericValue & flag.bit) === flag.bit).slice(0, max).map((flag) => flag.label);
+}
+
+function getEntityPrimaryId(): string | null {
+  const current = dbState.entityCurrentData;
+  const entityType = $entityType?.value || 'creature';
+  const config = ENTITY_TABLES[entityType];
+  if (!current || !config) return null;
+  const value = current[config.primaryKey];
+  if (value === null || value === undefined || value === '') return null;
+  return String(value);
+}
+
+function setEntitySelection(entityType: string, id: string | number): void {
+  if ($entityType) $entityType.value = entityType;
+  if ($entityId) $entityId.value = String(id);
+  if ($entitySearch) $entitySearch.value = '';
+  $entitySearchResults?.classList.add('hidden');
+  void loadEntityById();
+}
+
+function closeSelectorOverlay(): void {
+  $selectorOverlay?.classList.add('hidden');
+  dbState.selectorFieldName = null;
+  dbState.selectorInputEl = null;
+  dbState.selectorEntityType = null;
+}
+
+function applySelectorValue(id: string): void {
+  if (!dbState.selectorInputEl) return;
+  dbState.selectorInputEl.value = id;
+  dbState.selectorInputEl.dispatchEvent(new Event('input', { bubbles: true }));
+  closeSelectorOverlay();
+}
+
+function renderSelectorRows(rows: Record<string, unknown>[], spec: SelectorSpec): void {
+  if (!$selectorResults) return;
+
+  const config = ENTITY_TABLES[spec.entityType];
+  if (!rows.length) {
+    $selectorResults.innerHTML = '<p class="text-dark-text-muted text-sm p-4">No matching rows found.</p>';
+    return;
+  }
+
+  $selectorResults.innerHTML = rows.map((row) => {
+    const id = String(row[config.primaryKey] ?? '');
+    const name = String(row[config.nameField] ?? `Unnamed ${spec.entityType}`);
+    const qualityMeta = spec.entityType === 'item' ? getItemQualityMeta(row.Quality) : null;
+    const metaParts = [`#${id}`];
+
+    if (spec.entityType === 'item') {
+      metaParts.push(`DisplayID ${row.displayid ?? '—'}`);
+      if (qualityMeta) metaParts.push(qualityMeta.label);
+    } else if (spec.entityType === 'creature') {
+      metaParts.push(`Level ${row.minlevel ?? '—'}-${row.maxlevel ?? '—'}`);
+      metaParts.push(CREATURE_RANK_LABELS[toNumber(row.rank)] ?? `Rank ${toNumber(row.rank)}`);
+    } else if (spec.entityType === 'quest') {
+      metaParts.push(`QuestLevel ${row.QuestLevel ?? '—'}`);
+      metaParts.push(`Min ${row.MinLevel ?? '—'}`);
+    }
+
+    return `<div class="selector-result-item">
+      <div class="selector-result-main">
+        <div class="selector-result-title"${qualityMeta ? ` style="color:${qualityMeta.color}"` : ''}>${escapeHtml(name)}</div>
+        <div class="selector-result-meta">${metaParts.map((part) => `<span>${escapeHtml(String(part))}</span>`).join('')}</div>
+      </div>
+      <button type="button" class="selector-result-apply" data-selector-id="${escapeHtml(id)}">Use</button>
+    </div>`;
+  }).join('');
+}
+
+async function runSelectorSearch(term: string): Promise<void> {
+  if (!$selectorResults || !dbState.selectorEntityType) return;
+
+  const spec = getSelectorSpec(dbState.selectorFieldName ?? '');
+  if (!spec) return;
+  const config = ENTITY_TABLES[dbState.selectorEntityType];
+  if (!config) return;
+
+  const token = ++dbState.selectorSearchToken;
+  const trimmed = term.trim();
+  if (!trimmed) {
+    $selectorResults.innerHTML = '<p class="text-dark-text-muted text-sm p-4">Start typing to search.</p>';
+    return;
+  }
+
+  $selectorResults.innerHTML = '<p class="text-dark-text-muted text-sm p-4">Searching…</p>';
+
+  const idLike = `%${trimmed}%`;
+  const nameLike = `%${trimmed}%`;
+
+  try {
+    const extraColumns = spec.entityType === 'item'
+      ? ', `Quality`, `displayid`'
+      : spec.entityType === 'creature'
+        ? ', `minlevel`, `maxlevel`, `rank`'
+        : ', `QuestLevel`, `MinLevel`';
+
+    const result = await window.electronAPI.db.query<Record<string, unknown>>(
+      `SELECT \`${config.primaryKey}\`, \`${config.nameField}\`${extraColumns} FROM \`${config.table}\` WHERE CAST(\`${config.primaryKey}\` AS CHAR) LIKE ? OR \`${config.nameField}\` LIKE ? ORDER BY \`${config.primaryKey}\` LIMIT 40`,
+      [idLike, nameLike],
+    );
+
+    if (token !== dbState.selectorSearchToken) return;
+    renderSelectorRows(result.rows || [], spec);
+  } catch (error) {
+    if (token !== dbState.selectorSearchToken) return;
+    const message = error instanceof Error ? error.message : String(error);
+    $selectorResults.innerHTML = `<p class="text-wow-red text-sm p-4">Search failed: ${escapeHtml(message)}</p>`;
+  }
+}
+
+const debouncedSelectorSearch = debounce((term: string) => {
+  void runSelectorSearch(term);
+}, 220);
+
+function openSelectorOverlay(fieldName: string, inputEl: HTMLInputElement): void {
+  const spec = getSelectorSpec(fieldName);
+  if (!spec || !$selectorOverlay || !$selectorSearchInput || !$selectorResults) return;
+
+  dbState.selectorFieldName = fieldName;
+  dbState.selectorInputEl = inputEl;
+  dbState.selectorEntityType = spec.entityType;
+  dbState.selectorSearchToken += 1;
+
+  if ($selectorDialogTitle) $selectorDialogTitle.textContent = spec.label;
+  if ($selectorDialogSubtitle) $selectorDialogSubtitle.textContent = spec.subtitle;
+  $selectorSearchInput.value = inputEl.value.trim();
+  $selectorResults.innerHTML = '<p class="text-dark-text-muted text-sm p-4">Start typing to search.</p>';
+
+  $selectorOverlay.classList.remove('hidden');
+  $selectorSearchInput.focus();
+  if ($selectorSearchInput.value.trim()) {
+    void runSelectorSearch($selectorSearchInput.value);
+  }
+}
+
+function getEntityPreviewLinks(entityType: string, entity: Record<string, unknown>): EntityPreviewLink[] {
+  const id = getEntityPrimaryId();
+  if (!id) return [];
+
+  const links: EntityPreviewLink[] = [];
+  switch (entityType) {
+    case 'creature':
+      links.push(
+        { label: 'Wowhead NPC', url: `https://www.wowhead.com/wotlk/npc=${encodeURIComponent(id)}`, tone: 'accent' },
+        { label: 'Search Model IDs', url: `https://www.google.com/search?q=${encodeURIComponent(`wow ${entity.modelid1 ?? ''} ${entity.modelid2 ?? ''} creature display`)}` },
+      );
+      break;
+    case 'item':
+      links.push(
+        { label: 'Wowhead Item', url: `https://www.wowhead.com/wotlk/item=${encodeURIComponent(id)}`, tone: 'accent' },
+        { label: 'Search Display ID', url: `https://www.google.com/search?q=${encodeURIComponent(`wow item displayid ${entity.displayid ?? ''}`)}` },
+      );
+      break;
+    case 'quest':
+      links.push({ label: 'Wowhead Quest', url: `https://www.wowhead.com/wotlk/quest=${encodeURIComponent(id)}`, tone: 'accent' });
+      break;
+    case 'gameobject':
+      links.push({ label: 'Wowhead GameObject', url: `https://www.wowhead.com/wotlk/object=${encodeURIComponent(id)}`, tone: 'accent' });
+      break;
+    default:
+      links.push({ label: 'Search Entity', url: `https://www.google.com/search?q=${encodeURIComponent(`azerothcore ${entityType} ${id}`)}`, tone: 'accent' });
+      break;
+  }
+  return links;
+}
+
+function renderPreviewLinks(entityType: string, entity: Record<string, unknown>): string {
+  const links = getEntityPreviewLinks(entityType, entity);
+  if (!links.length) return '';
+
+  return `<div class="entity-preview-actions">${links.map((link) => `
+    <button type="button" class="entity-preview-link ${link.tone === 'accent' ? 'accent' : ''}" data-preview-url="${escapeHtml(link.url)}">
+      ${escapeHtml(link.label)}
+    </button>`).join('')}</div>`;
+}
+
+function buildPreviewStat(label: string, value: string, tone = ''): string {
+  return `<div class="entity-preview-stat ${tone}"><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong></div>`;
+}
+
+function buildPreviewChip(label: string, tone = ''): string {
+  return `<span class="entity-preview-chip ${tone}">${escapeHtml(label)}</span>`;
+}
+
+function buildPreviewList(title: string, entries: string[], emptyText: string): string {
+  if (!entries.length) {
+    return `<div class="entity-preview-empty">${escapeHtml(emptyText)}</div>`;
+  }
+
+  return `<div class="entity-preview-list"><h5>${escapeHtml(title)}</h5><ul>${entries.map((entry) => `<li>${escapeHtml(entry)}</li>`).join('')}</ul></div>`;
+}
+
+function resetEntityMediaPreview(message = 'Load an entity to fetch a live visual reference.'): void {
+  dbState.entityMediaKey = null;
+  dbState.entityMediaPreview = null;
+  dbState.entityMediaStatus = 'idle';
+  dbState.entityMediaMessage = message;
+}
+
+function getEntityMediaKey(entityType: string): string | null {
+  const primaryId = getEntityPrimaryId();
+  if (!primaryId) return null;
+  if (!['item', 'creature', 'quest', 'gameobject'].includes(entityType)) return null;
+  return `${entityType}:${primaryId}`;
+}
+
+function getEntityMediaDisplayIds(entityType: string, entity: Record<string, unknown>): number[] {
+  if (entityType === 'item') {
+    const displayId = toNumber(entity.displayid);
+    return displayId > 0 ? [displayId] : [];
+  }
+
+  if (entityType === 'creature') {
+    return ['modelid1', 'modelid2', 'modelid3', 'modelid4']
+      .map((field) => toNumber(entity[field]))
+      .filter((value) => value > 0);
+  }
+
+  return [];
+}
+
+function buildEntityMediaCard(): string {
+  const preview = dbState.entityMediaPreview;
+
+  if (dbState.entityMediaStatus === 'loading') {
+    return `<div class="entity-preview-media-card is-loading"><div class="entity-preview-media-copy"><h5>Visual Reference</h5><p>${escapeHtml(dbState.entityMediaMessage || 'Fetching live reference media…')}</p></div></div>`;
+  }
+
+  if (dbState.entityMediaStatus === 'ready' && preview?.imageUrl) {
+    return `
+      <div class="entity-preview-media-card">
+        <div class="entity-preview-media-frame">
+          <img src="${escapeHtml(preview.imageUrl)}" alt="${escapeHtml(preview.title || 'Entity visual reference')}" loading="lazy" referrerpolicy="no-referrer" />
+        </div>
+        <div class="entity-preview-media-copy">
+          <h5>${escapeHtml(preview.sourceLabel)}</h5>
+          ${preview.title ? `<strong>${escapeHtml(preview.title)}</strong>` : ''}
+          ${preview.summary ? `<p>${escapeHtml(preview.summary)}</p>` : ''}
+        </div>
+      </div>`;
+  }
+
+  if (dbState.entityMediaStatus === 'error' || dbState.entityMediaStatus === 'unsupported') {
+    const toneClass = dbState.entityMediaStatus === 'error' ? 'is-error' : '';
+    return `<div class="entity-preview-media-card ${toneClass}"><div class="entity-preview-media-copy"><h5>Visual Reference</h5><p>${escapeHtml(dbState.entityMediaMessage || 'No live visual reference is available for this entity yet.')}</p></div></div>`;
+  }
+
+  return '';
+}
+
+function requestEntityMediaPreview(entityType: string, entity: Record<string, unknown>): void {
+  const key = getEntityMediaKey(entityType);
+  if (!key) {
+    resetEntityMediaPreview('Save or load an existing entity to fetch a live visual reference.');
+    return;
+  }
+
+  if (dbState.entityMediaKey === key && ['loading', 'ready', 'unsupported', 'error'].includes(dbState.entityMediaStatus)) {
+    return;
+  }
+
+  const entityId = getEntityPrimaryId();
+  if (!entityId) {
+    resetEntityMediaPreview('Save or load an existing entity to fetch a live visual reference.');
+    return;
+  }
+
+  dbState.entityMediaKey = key;
+  dbState.entityMediaPreview = null;
+  dbState.entityMediaStatus = 'loading';
+  dbState.entityMediaMessage = 'Fetching live reference media…';
+  const token = ++dbState.entityMediaToken;
+
+  void window.electronAPI.app.getEntityMediaPreview({
+    entityType,
+    id: entityId,
+    displayIds: getEntityMediaDisplayIds(entityType, entity),
+  }).then((result) => {
+    if (token !== dbState.entityMediaToken || dbState.entityMediaKey !== key) return;
+    dbState.entityMediaPreview = result;
+    dbState.entityMediaStatus = result.status;
+    dbState.entityMediaMessage = result.message;
+    updateEntityPreview();
+  }).catch((error) => {
+    if (token !== dbState.entityMediaToken || dbState.entityMediaKey !== key) return;
+    dbState.entityMediaPreview = null;
+    dbState.entityMediaStatus = 'error';
+    dbState.entityMediaMessage = error instanceof Error ? error.message : String(error);
+    updateEntityPreview();
+  });
+}
+
+function buildItemPreview(entity: Record<string, unknown>): string {
+  const quality = getItemQualityMeta(entity.Quality);
+  const name = String(entity.name || 'Unnamed Item');
+  const itemLevel = toNumber(entity.ItemLevel);
+  const requiredLevel = toNumber(entity.RequiredLevel);
+  const itemClass = ITEM_CLASS_LABELS[toNumber(entity.class)] ?? `Class ${toNumber(entity.class)}`;
+  const subclass = toNumber(entity.subclass);
+  const displayId = String(entity.displayid ?? '—');
+  const buyCount = toNumber(entity.BuyCount, 1);
+  const stackable = toNumber(entity.stackable);
+  const maxCount = toNumber(entity.maxcount);
+  const containerSlots = toNumber(entity.ContainerSlots);
+  const bonding = toNumber(entity.bonding);
+  const stats = Array.from({ length: 10 }, (_, index) => index + 1)
+    .map((slot) => {
+      const type = toNumber(entity[`stat_type${slot}`]);
+      const value = toNumber(entity[`stat_value${slot}`]);
+      if (!type || !value) return null;
+      return `${value > 0 ? '+' : ''}${value} ${ITEM_STAT_LABELS[type] ?? `Stat ${type}`}`;
+    })
+    .filter((line): line is string => Boolean(line));
+  const damageMin = toNumber(entity.dmg_min1);
+  const damageMax = toNumber(entity.dmg_max1);
+  const armor = toNumber(entity.armor);
+  const resistances = [
+    ['Holy', entity.holy_res],
+    ['Fire', entity.fire_res],
+    ['Nature', entity.nature_res],
+    ['Frost', entity.frost_res],
+    ['Shadow', entity.shadow_res],
+    ['Arcane', entity.arcane_res],
+  ]
+    .map(([label, value]) => ({ label, value: toNumber(value) }))
+    .filter((entry) => entry.value !== 0)
+    .map((entry) => `${entry.value > 0 ? '+' : ''}${entry.value} ${entry.label} Resistance`);
+  const sockets = [1, 2, 3]
+    .map((slot) => {
+      const color = toNumber(entity[`socketColor_${slot}`]);
+      const content = toNumber(entity[`socketContent_${slot}`]);
+      if (!color && !content) return null;
+      return `Socket ${slot}: Color ${color || '—'} · Content ${content || 'empty'}`;
+    })
+    .filter((entry): entry is string => Boolean(entry));
+  const spells = [1, 2, 3, 4, 5]
+    .map((slot) => {
+      const spellId = toNumber(entity[`spellid_${slot}`]);
+      if (!spellId) return null;
+      const trigger = toNumber(entity[`spelltrigger_${slot}`]);
+      const charges = toNumber(entity[`spellcharges_${slot}`]);
+      const cooldown = toNumber(entity[`spellcooldown_${slot}`]);
+      return `Spell ${spellId} · Trigger ${trigger}${charges ? ` · Charges ${charges}` : ''}${cooldown > 0 ? ` · Cooldown ${cooldown}ms` : ''}`;
+    })
+    .filter((entry): entry is string => Boolean(entry));
+  const usageNotes = [
+    `Buy Count ${buyCount || 1}`,
+    stackable ? `Stackable ${stackable}` : null,
+    maxCount > 0 ? `Unique Max ${maxCount}` : null,
+    containerSlots > 0 ? `${containerSlots} container slots` : null,
+    bonding > 0 ? `Bonding ${bonding}` : null,
+  ].filter((entry): entry is string => Boolean(entry));
+
+  return `
+    <div class="entity-preview-stage ${quality.cssClass}">
+      <div class="entity-preview-eyebrow">Item Template • #${escapeHtml(String(entity.entry ?? 'new'))}</div>
+      <div class="entity-preview-title" style="color:${quality.color}">${escapeHtml(name)}</div>
+      <div class="entity-preview-subtitle">${escapeHtml(quality.label)} · ${escapeHtml(itemClass)} · Subclass ${subclass}</div>
+      ${buildEntityMediaCard()}
+      <div class="entity-preview-stat-grid">
+        ${buildPreviewStat('Item Level', String(itemLevel || '—'), 'accent')}
+        ${buildPreviewStat('Required Level', String(requiredLevel || '—'))}
+        ${buildPreviewStat('Buy', formatCopper(entity.BuyPrice))}
+        ${buildPreviewStat('Sell', formatCopper(entity.SellPrice))}
+      </div>
+      <div class="entity-preview-chip-row">
+        ${buildPreviewChip(`DisplayID ${displayId}`, 'accent')}
+        ${armor ? buildPreviewChip(`${armor} Armor`) : ''}
+        ${damageMin || damageMax ? buildPreviewChip(`${damageMin.toFixed(0)}-${damageMax.toFixed(0)} Damage`) : ''}
+        ${usageNotes.map((note) => buildPreviewChip(note)).join('')}
+      </div>
+      <div class="entity-preview-list-grid">
+        ${buildPreviewList('Primary Stats', stats.slice(0, 10), 'No primary stats configured yet.')}
+        ${buildPreviewList('Resistances', resistances, 'No resistances configured.')}
+        ${buildPreviewList('Sockets', sockets, 'No sockets configured.')}
+        ${buildPreviewList('Embedded Spells', spells, 'No embedded spells configured.')}
+      </div>
+      <div class="entity-preview-model-note">Visual / model note: the full in-app 3D item model viewer is not embedded yet, but the item row, DisplayID, and all editable fields are loaded into the editor below.</div>
+      ${renderPreviewLinks('item', entity)}
+    </div>`;
+}
+
+function buildCreaturePreview(entity: Record<string, unknown>): string {
+  const entry = String(entity.entry ?? 'new');
+  const name = String(entity.name || 'Unnamed Creature');
+  const subname = String(entity.subname || '').trim();
+  const levelRange = `${toNumber(entity.minlevel) || 0}-${toNumber(entity.maxlevel) || 0}`;
+  const rank = CREATURE_RANK_LABELS[toNumber(entity.rank)] ?? `Rank ${toNumber(entity.rank)}`;
+  const type = CREATURE_TYPE_LABELS[toNumber(entity.type)] ?? `Type ${toNumber(entity.type)}`;
+  const modelIds = ['modelid1', 'modelid2', 'modelid3', 'modelid4']
+    .map((field) => toNumber(entity[field]))
+    .filter((value) => value > 0);
+  const interactionFlags = summarizeFlags('npcflag', entity.npcflag, 4);
+  const combatFlags = summarizeFlags('unit_flags', entity.unit_flags, 3);
+
+  return `
+    <div class="entity-preview-stage creature-preview">
+      <div class="entity-preview-eyebrow">Creature Template • #${escapeHtml(entry)}</div>
+      <div class="entity-preview-title">${escapeHtml(name)}</div>
+      <div class="entity-preview-subtitle">${escapeHtml(subname || 'No subname')} · ${escapeHtml(type)} · ${escapeHtml(rank)}</div>
+      ${buildEntityMediaCard()}
+      <div class="entity-preview-stat-grid">
+        ${buildPreviewStat('Level Range', levelRange, 'accent')}
+        ${buildPreviewStat('Faction', String(entity.faction ?? '—'))}
+        ${buildPreviewStat('Scale', String(entity.scale ?? '1'))}
+        ${buildPreviewStat('AI', String(entity.AIName || 'Default'))}
+      </div>
+      <div class="entity-preview-chip-row">
+        ${modelIds.length ? modelIds.map((modelId) => buildPreviewChip(`Model ${modelId}`, 'accent')).join('') : buildPreviewChip('No model IDs set')}
+      </div>
+      ${(interactionFlags.length || combatFlags.length)
+        ? `<div class="entity-preview-list"><h5>Flags</h5><div class="entity-preview-chip-row">${interactionFlags.map((flag) => buildPreviewChip(flag, 'good')).join('')}${combatFlags.map((flag) => buildPreviewChip(flag)).join('')}</div></div>`
+        : '<div class="entity-preview-empty">No notable flags detected.</div>'}
+      ${renderPreviewLinks('creature', entity)}
+    </div>`;
+}
+
+function buildQuestPreview(entity: Record<string, unknown>): string {
+  const flags = summarizeFlags('Flags', entity.Flags, 5);
+  const rewardMoney = formatCopper(entity.RewardMoney);
+  const title = String(entity.LogTitle || 'Untitled Quest');
+  const desc = String(entity.QuestDescription || entity.LogDescription || '').trim();
+
+  return `
+    <div class="entity-preview-stage quest-preview">
+      <div class="entity-preview-eyebrow">Quest • #${escapeHtml(String(entity.ID ?? 'new'))}</div>
+      <div class="entity-preview-title">${escapeHtml(title)}</div>
+      <div class="entity-preview-subtitle">Level ${escapeHtml(String(entity.QuestLevel ?? '—'))} · Min ${escapeHtml(String(entity.MinLevel ?? '—'))}</div>
+      ${buildEntityMediaCard()}
+      <div class="entity-preview-stat-grid">
+        ${buildPreviewStat('XP Tier', String(entity.RewardXPDifficulty ?? '—'), 'accent')}
+        ${buildPreviewStat('Money', rewardMoney)}
+        ${buildPreviewStat('Quest Type', String(entity.QuestType ?? '—'))}
+        ${buildPreviewStat('Suggested Group', String(entity.SuggestedGroupNum ?? '—'))}
+      </div>
+      ${flags.length ? `<div class="entity-preview-chip-row">${flags.map((flag) => buildPreviewChip(flag, 'accent')).join('')}</div>` : ''}
+      ${desc ? `<div class="entity-preview-description">${escapeHtml(desc.slice(0, 260))}${desc.length > 260 ? '…' : ''}</div>` : '<div class="entity-preview-empty">No quest description text yet.</div>'}
+      ${renderPreviewLinks('quest', entity)}
+    </div>`;
+}
+
+function buildGenericPreview(entityType: string, entity: Record<string, unknown>): string {
+  const title = String(entity.name || entity.LogTitle || entity.SpellName || `New ${entityType}`);
+  const id = getEntityPrimaryId() ?? 'new';
+  const filledFields = Object.values(entity).filter((value) => value !== null && value !== undefined && value !== '').length;
+
+  return `
+    <div class="entity-preview-stage generic-preview">
+      <div class="entity-preview-eyebrow">${escapeHtml(entityType)} • #${escapeHtml(id)}</div>
+      <div class="entity-preview-title">${escapeHtml(title)}</div>
+      ${buildEntityMediaCard()}
+      <div class="entity-preview-stat-grid">
+        ${buildPreviewStat('Fields Set', String(filledFields), 'accent')}
+        ${buildPreviewStat('Pending Changes', String(Object.keys(dbState.entityCurrentData ?? {}).filter((key) => String(dbState.entityCurrentData?.[key] ?? '') !== String(dbState.entityOriginalData?.[key] ?? '')).length))}
+      </div>
+      ${renderPreviewLinks(entityType, entity)}
+    </div>`;
+}
+
+function updateEntityPreview(): void {
+  if (!$entityPreviewContent) return;
+
+  const entity = dbState.entityCurrentData;
+  const entityType = $entityType?.value || 'creature';
+  if (!entity) {
+    resetEntityMediaPreview();
+    $entityPreviewContent.innerHTML = '<p class="text-dark-text-muted text-sm p-4">Load an entity to see a live preview, quality colors, and quick lookup links.</p>';
+    return;
+  }
+
+  requestEntityMediaPreview(entityType, entity);
+
+  switch (entityType) {
+    case 'item':
+      $entityPreviewContent.innerHTML = buildItemPreview(entity);
+      break;
+    case 'creature':
+      $entityPreviewContent.innerHTML = buildCreaturePreview(entity);
+      break;
+    case 'quest':
+      $entityPreviewContent.innerHTML = buildQuestPreview(entity);
+      break;
+    default:
+      $entityPreviewContent.innerHTML = buildGenericPreview(entityType, entity);
+      break;
+  }
+}
+
+function renderRelatedSection(title: string, rows: Record<string, unknown>[], emptyText: string, variant = ''): string {
+  if (!rows.length) {
+    return `<section class="entity-related-section"><div class="entity-related-header"><h5>${escapeHtml(title)}</h5></div><div class="entity-related-empty">${escapeHtml(emptyText)}</div></section>`;
+  }
+
+  const columns = Object.keys(rows[0]).filter((column) => !/^_load[A-Z]/.test(column));
+  return `
+    <section class="entity-related-section ${variant}">
+      <div class="entity-related-header"><h5>${escapeHtml(title)}</h5><span>${rows.length} row${rows.length === 1 ? '' : 's'}</span></div>
+      <div class="entity-related-table-wrap">
+        <table class="entity-related-table">
+          <thead><tr>${columns.map((column) => `<th>${escapeHtml(column)}</th>`).join('')}<th>Action</th></tr></thead>
+          <tbody>
+            ${rows.map((row) => {
+              const groupId = toNumber(row.GroupId ?? row.groupid ?? 0);
+              const isReference = toNumber(row.Reference ?? row.reference ?? 0) > 0;
+              const loadType = row._loadEntityType ? String(row._loadEntityType) : '';
+              const loadId = row._loadEntityId ? String(row._loadEntityId) : '';
+              return `<tr class="${groupId ? 'loot-group' : ''} ${isReference ? 'loot-reference' : ''}">${columns.map((column) => {
+                const value = row[column];
+                const display = value === null || value === undefined || value === '' ? '—' : String(value);
+                const isNameColumn = /name|title/i.test(column);
+                const qualityMeta = /quality/i.test(column) ? getItemQualityMeta(value) : row.Quality !== undefined && /ItemName/i.test(column) ? getItemQualityMeta(row.Quality) : null;
+                const style = qualityMeta ? ` style="color:${qualityMeta.color}"` : '';
+                return `<td class="${isNameColumn ? 'entity-related-name' : ''}"${style}>${escapeHtml(display)}</td>`;
+              }).join('')}<td>${loadType && loadId ? `<div class="entity-related-actions"><button type="button" class="entity-related-load" data-load-entity-type="${escapeHtml(loadType)}" data-load-entity-id="${escapeHtml(loadId)}">Load</button></div>` : '—'}</td></tr>`;
+            }).join('')}
+          </tbody>
+        </table>
+      </div>
+    </section>`;
+}
+
+async function loadEntityRelations(): Promise<void> {
+  if (!$entityRelationsContent) return;
+
+  const entity = dbState.entityCurrentData;
+  const entityType = $entityType?.value || 'creature';
+  const entityId = getEntityPrimaryId();
+  const renderVersion = ++dbState.entityRenderVersion;
+
+  if (!dbState.connected || !entity || !entityId || dbState.entityIsNew) {
+    $entityRelationsContent.innerHTML = '<p class="text-dark-text-muted text-sm p-4">Linked vendors, loot, scripts, and rewards will show up here when available.</p>';
+    return;
+  }
+
+  $entityRelationsContent.innerHTML = '<p class="text-dark-text-muted text-sm p-4">Loading related data…</p>';
+
+  const sections: string[] = [];
+
+  try {
+    if (entityType === 'creature') {
+      const [vendorRows, lootRows, saiRows] = await Promise.all([
+        window.electronAPI.db.query<Record<string, unknown>>("SELECT nv.item, it.name AS ItemName, it.Quality, nv.maxcount, nv.incrtime, nv.ExtendedCost, 'item' AS _loadEntityType, nv.item AS _loadEntityId FROM `npc_vendor` nv LEFT JOIN `item_template` it ON it.entry = nv.item WHERE nv.`entry` = ? ORDER BY nv.`item` LIMIT 25", [entityId]),
+        window.electronAPI.db.query<Record<string, unknown>>("SELECT clt.Item, it.name AS ItemName, it.Quality, clt.ChanceOrQuestChance, clt.GroupId, clt.MinCount, clt.MaxCount, clt.Reference, 'item' AS _loadEntityType, clt.Item AS _loadEntityId FROM `creature_loot_template` clt LEFT JOIN `item_template` it ON it.entry = clt.Item WHERE clt.`Entry` = ? ORDER BY clt.`GroupId`, clt.`Item` LIMIT 25", [entityId]),
+        window.electronAPI.db.query<Record<string, unknown>>('SELECT id, event_type, action_type, target_type, comment FROM `smart_scripts` WHERE `entryorguid` = ? ORDER BY `id` LIMIT 20', [entityId]),
+      ]);
+
+      sections.push(
+        renderRelatedSection('Vendor Items', vendorRows.rows || [], 'This creature is not selling anything yet.'),
+        renderRelatedSection('Creature Loot', lootRows.rows || [], 'No creature loot rows found for this entry.', 'loot'),
+        renderRelatedSection('SmartAI Rows', saiRows.rows || [], 'No SmartAI rows found for this creature.'),
+      );
+    } else if (entityType === 'item') {
+      const [vendorRows, lootRows, rewardRows] = await Promise.all([
+        window.electronAPI.db.query<Record<string, unknown>>("SELECT nv.entry, ct.name AS CreatureName, nv.maxcount, nv.incrtime, nv.ExtendedCost, 'creature' AS _loadEntityType, nv.entry AS _loadEntityId FROM `npc_vendor` nv LEFT JOIN `creature_template` ct ON ct.entry = nv.entry WHERE nv.`item` = ? ORDER BY nv.`entry` LIMIT 25", [entityId]),
+        window.electronAPI.db.query<Record<string, unknown>>("SELECT clt.`Entry`, ct.name AS CreatureName, clt.ChanceOrQuestChance, clt.GroupId, clt.MinCount, clt.MaxCount, clt.Reference, 'creature' AS _loadEntityType, clt.`Entry` AS _loadEntityId FROM `creature_loot_template` clt LEFT JOIN `creature_template` ct ON ct.entry = clt.`Entry` WHERE clt.`Item` = ? ORDER BY clt.`Entry` LIMIT 25", [entityId]),
+        window.electronAPI.db.query<Record<string, unknown>>("SELECT ID, LogTitle, QuestLevel, 'quest' AS _loadEntityType, ID AS _loadEntityId FROM `quest_template` WHERE RewardItem1 = ? OR RewardItem2 = ? OR RewardItem3 = ? OR RewardItem4 = ? OR RewardChoiceItemId1 = ? OR RewardChoiceItemId2 = ? OR RewardChoiceItemId3 = ? OR RewardChoiceItemId4 = ? OR RewardChoiceItemId5 = ? OR RewardChoiceItemId6 = ? LIMIT 25", [entityId, entityId, entityId, entityId, entityId, entityId, entityId, entityId, entityId, entityId]),
+      ]);
+
+      sections.push(
+        renderRelatedSection('Sold By Vendors', vendorRows.rows || [], 'No vendor rows are using this item.'),
+        renderRelatedSection('Dropped By Creatures', lootRows.rows || [], 'No creature loot rows are using this item.', 'loot'),
+        renderRelatedSection('Quest Rewards', rewardRows.rows || [], 'No quests reward this item.'),
+      );
+    } else if (entityType === 'quest') {
+      const [starterRows, enderRows] = await Promise.all([
+        window.electronAPI.db.query<Record<string, unknown>>("SELECT cqs.id, ct.name AS CreatureName, 'creature' AS _loadEntityType, cqs.id AS _loadEntityId FROM `creature_queststarter` cqs LEFT JOIN `creature_template` ct ON ct.entry = cqs.id WHERE cqs.`quest` = ? LIMIT 25", [entityId]),
+        window.electronAPI.db.query<Record<string, unknown>>("SELECT cqe.id, ct.name AS CreatureName, 'creature' AS _loadEntityType, cqe.id AS _loadEntityId FROM `creature_questender` cqe LEFT JOIN `creature_template` ct ON ct.entry = cqe.id WHERE cqe.`quest` = ? LIMIT 25", [entityId]),
+      ]);
+
+      sections.push(
+        renderRelatedSection('Quest Starters', starterRows.rows || [], 'No creature quest starters found.'),
+        renderRelatedSection('Quest Enders', enderRows.rows || [], 'No creature quest enders found.'),
+      );
+    } else {
+      sections.push(renderRelatedSection('Entity Context', [], 'No related-data presets yet for this editor.'));
+    }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    sections.length = 0;
+    sections.push(`<section class="entity-related-section"><div class="entity-related-empty">Unable to load related data: ${escapeHtml(message)}</div></section>`);
+  }
+
+  if (renderVersion !== dbState.entityRenderVersion) return;
+  $entityRelationsContent.innerHTML = sections.join('');
+}
+$entityPreviewContent?.addEventListener('click', async (event) => {
+  const target = (event.target as HTMLElement).closest<HTMLButtonElement>('[data-preview-url]');
+  if (!target) return;
+
+  const url = target.dataset.previewUrl;
+  if (!url) return;
+
+  target.disabled = true;
+  const originalLabel = target.textContent;
+  const result = await window.electronAPI.app.openExternal(url);
+  target.textContent = result.success ? 'Opened ✓' : 'Open failed';
+  setTimeout(() => {
+    target.textContent = originalLabel;
+    target.disabled = false;
+  }, 1400);
+});
+
+$entityRelationsContent?.addEventListener('click', (event) => {
+  const button = (event.target as HTMLElement).closest<HTMLButtonElement>('[data-load-entity-type][data-load-entity-id]');
+  if (!button) return;
+  const entityType = button.dataset.loadEntityType;
+  const entityId = button.dataset.loadEntityId;
+  if (!entityType || !entityId) return;
+  setEntitySelection(entityType, entityId);
+});
+
 // ── SmartAI type lookup maps ───────────────────────────────────────────────
 const SAI_EVENT: Record<number, string> = {
   0:'UPDATE_IC',1:'UPDATE_OOC',2:'HEALTH_PCT',3:'MANA_PCT',4:'AGGRO',
@@ -1998,6 +3359,10 @@ $entityApplySqlBtn?.addEventListener('click', async () => {
     if (dbState.entityCurrentData) {
       dbState.entityOriginalData = { ...dbState.entityCurrentData };
       updateSQLPanel();
+      $entityEditorContent?.querySelectorAll('.entity-field-dirty').forEach((el) => el.classList.remove('entity-field-dirty'));
+      $entityEditorContent?.querySelectorAll('.is-dirty').forEach((el) => el.classList.remove('is-dirty'));
+      updateEntityPreview();
+      void loadEntityRelations();
     }
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
@@ -2060,6 +3425,28 @@ $flagsCancelBtn?.addEventListener('click', () => {
   dbState.flagsInputEl = null;
 });
 
+$selectorCloseBtn?.addEventListener('click', closeSelectorOverlay);
+$selectorOverlay?.addEventListener('click', (event) => {
+  if (event.target === $selectorOverlay) {
+    closeSelectorOverlay();
+  }
+});
+$selectorSearchInput?.addEventListener('input', () => {
+  debouncedSelectorSearch($selectorSearchInput.value);
+});
+$selectorSearchInput?.addEventListener('keydown', (event) => {
+  if (event.key === 'Escape') {
+    closeSelectorOverlay();
+  }
+});
+$selectorResults?.addEventListener('click', (event) => {
+  const button = (event.target as HTMLElement).closest<HTMLButtonElement>('[data-selector-id]');
+  if (!button) return;
+  const id = button.dataset.selectorId;
+  if (!id) return;
+  applySelectorValue(id);
+});
+
 // ── Entity Form Rendering ───────────────────────────────────────────────────
 function renderEntityEditor(entity: Record<string, unknown>, config: { table: string; primaryKey: string; nameField: string }): void {
   const entityType = $entityType?.value || '';
@@ -2078,6 +3465,8 @@ function renderEntityEditor(entity: Record<string, unknown>, config: { table: st
   if (entityType === 'smartai') {
     renderSAIEditor(entity, config);
     updateSQLPanel();
+    updateEntityPreview();
+    void loadEntityRelations();
     return;
   }
 
@@ -2119,14 +3508,31 @@ function renderEntityEditor(entity: Record<string, unknown>, config: { table: st
 
   $entityEditorContent!.innerHTML = html;
 
+  const wireFieldChange = (field: string, rawValue: string, element: HTMLElement): void => {
+    if (!dbState.entityCurrentData) return;
+
+    const nextValue = rawValue === '' ? null : rawValue;
+    const originalValue = dbState.entityOriginalData?.[field] ?? null;
+    dbState.entityCurrentData[field] = nextValue;
+
+    const isDirty = String(nextValue ?? '') !== String(originalValue ?? '');
+    element.classList.toggle('is-dirty', isDirty);
+    element.closest('.entity-field')?.classList.toggle('entity-field-dirty', isDirty);
+
+    updateSQLPanel();
+    updateEntityPreview();
+  };
+
   // Wire up field change tracking + SQL update
-  $entityEditorContent!.querySelectorAll<HTMLInputElement>('input[data-field]').forEach(inp => {
+  $entityEditorContent!.querySelectorAll<HTMLInputElement>('input[data-field]').forEach((inp) => {
     inp.addEventListener('input', () => {
-      const field = inp.dataset.field!;
-      if (dbState.entityCurrentData) {
-        dbState.entityCurrentData[field] = inp.value === '' ? null : inp.value;
-      }
-      updateSQLPanel();
+      wireFieldChange(inp.dataset.field!, inp.value, inp);
+    });
+  });
+
+  $entityEditorContent!.querySelectorAll<HTMLTextAreaElement>('textarea[data-field]').forEach((textarea) => {
+    textarea.addEventListener('input', () => {
+      wireFieldChange(textarea.dataset.field!, textarea.value, textarea);
     });
   });
 
@@ -2139,15 +3545,27 @@ function renderEntityEditor(entity: Record<string, unknown>, config: { table: st
     });
   });
 
+  $entityEditorContent!.querySelectorAll<HTMLButtonElement>('.selector-btn[data-selector-field]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const fieldName = btn.dataset.selectorField!;
+      const input = $entityEditorContent!.querySelector<HTMLInputElement>(`input[data-field="${fieldName}"]`);
+      if (input) openSelectorOverlay(fieldName, input);
+    });
+  });
+
   updateSQLPanel();
+  updateEntityPreview();
+  void loadEntityRelations();
 }
 
 function buildFieldHtml(field: string, value: unknown, config: { primaryKey: string; nameField: string }): string {
   const isPK = field === config.primaryKey;
   const displayValue = value === null || value === undefined ? '' : String(value);
   const hasFlagDef = field in FLAG_DEFS;
+  const selectorSpec = !isPK ? getSelectorSpec(field) : null;
   const isMultiline = typeof displayValue === 'string' && displayValue.length > 120;
   const label = field.replace(/_/g, ' ').replace(/([A-Z])/g, ' $1').trim();
+  const hint = ENTITY_FIELD_HINTS[field];
 
   let inputHtml: string;
   if (isMultiline) {
@@ -2158,11 +3576,16 @@ function buildFieldHtml(field: string, value: unknown, config: { primaryKey: str
       <button type="button" class="flags-btn" data-flags-field="${escapeHtml(field)}" title="Open flags selector">Flags ⚑</button>
     </div>`;
   } else {
-    inputHtml = `<input type="text" data-field="${escapeHtml(field)}" value="${escapeHtml(displayValue)}" ${isPK ? 'readonly' : ''} placeholder="${value === null ? 'NULL' : ''}" />`;
+    inputHtml = selectorSpec
+      ? `<div class="entity-field-row">
+          <input type="text" data-field="${escapeHtml(field)}" value="${escapeHtml(displayValue)}" ${isPK ? 'readonly' : ''} placeholder="${value === null ? 'NULL' : ''}" />
+          <button type="button" class="selector-btn" data-selector-field="${escapeHtml(field)}" title="${escapeHtml(selectorSpec.label)}">…</button>
+        </div>`
+      : `<input type="text" data-field="${escapeHtml(field)}" value="${escapeHtml(displayValue)}" ${isPK ? 'readonly' : ''} placeholder="${value === null ? 'NULL' : ''}" />`;
   }
 
   return `<div class="entity-field${isMultiline ? ' entity-field-full' : ''}">
-    <label${isPK ? ' title="Primary Key — read only"' : ''}>${escapeHtml(label)}${isPK ? ' <small style="color:var(--accent);opacity:.7">(PK)</small>' : ''}</label>
+    <label${(isPK || hint) ? ` title="${escapeHtml(isPK ? `Primary Key — read only${hint ? ` • ${hint}` : ''}` : hint || '')}"` : ''}>${escapeHtml(label)}${isPK ? ' <small style="color:var(--accent);opacity:.7">(PK)</small>' : ''}</label>
     ${inputHtml}
   </div>`;
 }
@@ -2380,14 +3803,45 @@ async function loadEntityById(): Promise<void> {
       $entitySaveBtn!.disabled = true;
       $entityDeleteBtn!.disabled = true;
       $entitySqlCode!.textContent = '-- No entity found';
+      dbState.entityCurrentData = null;
+      dbState.entityOriginalData = null;
+      updateEntityPreview();
+      void loadEntityRelations();
     }
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     $entityEditorContent!.innerHTML = `<p class="text-wow-red text-sm p-4">Error: ${escapeHtml(msg)}</p>`;
+    dbState.entityCurrentData = null;
+    dbState.entityOriginalData = null;
+    updateEntityPreview();
+    void loadEntityRelations();
   }
 }
 
 $entityLoadBtn?.addEventListener('click', loadEntityById);
+
+$entityType?.addEventListener('change', () => {
+  dbState.entityCurrentData = null;
+  dbState.entityOriginalData = null;
+  dbState.entityIsNew = false;
+  if ($entityId) $entityId.value = '';
+  if ($entitySearch) $entitySearch.value = '';
+  if ($entitySearchResults) {
+    $entitySearchResults.innerHTML = '';
+    $entitySearchResults.classList.add('hidden');
+  }
+  if ($entityEditorContent) {
+    $entityEditorContent.innerHTML = '<p class="text-dark-text-muted text-sm p-4">Select an entity type and enter an ID to edit</p>';
+  }
+  if ($entitySqlCode) {
+    $entitySqlCode.textContent = '-- Load an entity to generate SQL';
+  }
+  if ($entitySaveBtn) $entitySaveBtn.disabled = true;
+  if ($entityDeleteBtn) $entityDeleteBtn.disabled = true;
+  if ($entityApplySqlBtn) $entityApplySqlBtn.disabled = true;
+  updateEntityPreview();
+  void loadEntityRelations();
+});
 
 // New entity
 $entityNewBtn?.addEventListener('click', async () => {
@@ -2435,8 +3889,13 @@ $entitySaveBtn?.addEventListener('click', async () => {
       const vals = Object.keys(fields).filter(f => f !== cfg.primaryKey).map(f => fields[f]);
       vals.push(entityId);
       await window.electronAPI.db.execute(`UPDATE \`${cfg.table}\` SET ${setClauses} WHERE \`${cfg.primaryKey}\` = ?`, vals);
-      dbState.entityOriginalData = { ...fields };
+      dbState.entityCurrentData = { ...fields, [cfg.primaryKey]: entityId };
+      dbState.entityOriginalData = { ...fields, [cfg.primaryKey]: entityId };
       updateSQLPanel();
+      $entityEditorContent?.querySelectorAll('.entity-field-dirty').forEach((el) => el.classList.remove('entity-field-dirty'));
+      $entityEditorContent?.querySelectorAll('.is-dirty').forEach((el) => el.classList.remove('is-dirty'));
+      updateEntityPreview();
+      void loadEntityRelations();
       const banner = document.createElement('div');
       banner.className = 'save-notification';
       banner.textContent = `✓ ${entityType} #${entityId} updated successfully`;
@@ -2447,9 +3906,13 @@ $entitySaveBtn?.addEventListener('click', async () => {
       const placeholders = Object.keys(fields).map(() => '?').join(', ');
       const res = await window.electronAPI.db.execute(`INSERT INTO \`${cfg.table}\` (${cols}) VALUES (${placeholders})`, Object.values(fields));
       if (res.insertId && $entityId) $entityId.value = String(res.insertId);
+      if (res.insertId && !fields[cfg.primaryKey]) fields[cfg.primaryKey] = res.insertId;
+      dbState.entityCurrentData = { ...fields };
       dbState.entityIsNew = false;
       dbState.entityOriginalData = { ...fields };
       updateSQLPanel();
+      updateEntityPreview();
+      void loadEntityRelations();
       const banner = document.createElement('div');
       banner.className = 'save-notification';
       banner.textContent = `✓ New ${entityType} created (ID: ${res.insertId ?? '?'})`;
@@ -2652,6 +4115,8 @@ function getMapViewport(canvasWidth: number, canvasHeight: number, bounds: (type
       height,
     };
   }
+      updateEntityPreview();
+      void loadEntityRelations();
 
   const width = canvasWidth;
   const height = Math.max(1, Math.round(width / aspectRatio));

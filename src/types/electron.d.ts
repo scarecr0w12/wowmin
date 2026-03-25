@@ -24,6 +24,22 @@ export interface UpdateCheckResult {
   message: string;
 }
 
+export interface EntityMediaPreviewRequest {
+  entityType: string;
+  id: string;
+  displayIds?: number[];
+}
+
+export interface EntityMediaPreviewResult {
+  status: 'ready' | 'unsupported' | 'error';
+  sourceLabel: string;
+  sourceUrl: string | null;
+  imageUrl: string | null;
+  title: string | null;
+  summary: string | null;
+  message: string;
+}
+
 // Database Types
 export interface DbConfig {
   host: string;
@@ -57,8 +73,11 @@ export interface FieldInfo {
 export interface ConnectionProfile {
   id: string;
   name: string;
-  type: 'soap' | 'database';
-  config: SoapConfig | DbConfig;
+  type?: 'soap' | 'database';
+  config?: SoapConfig | DbConfig;
+  soapConfig: SoapConfig;
+  databaseConfig: DbConfig;
+  mapDatabaseConfig: DbConfig;
   createdAt: string;
   updatedAt: string;
 }
@@ -70,6 +89,8 @@ export type IpcChannels = {
   'soap:command': (command: string) => SoapResult;
   'soap:disconnect': () => SoapResult;
   'app:getVersion': () => string;
+  'app:openExternal': (url: string) => SoapResult;
+  'app:getEntityMediaPreview': (request: EntityMediaPreviewRequest) => EntityMediaPreviewResult;
   'update:check': (force?: boolean) => UpdateCheckResult;
   'update:openReleasePage': (url?: string) => SoapResult;
   

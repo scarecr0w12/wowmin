@@ -4,7 +4,8 @@ import packageJson from '../package.json';
 import { SoapClient } from './soap-client';
 import { ConfigStore } from './config-store';
 import { getDbService, DatabaseService } from './database/db-service';
-import { SoapConfig, SoapResult, ConnectionProfile, DbConfig, DbConnectionState, QueryResult, FieldInfo, UpdateCheckResult } from './types/electron';
+import { SoapConfig, SoapResult, ConnectionProfile, DbConfig, DbConnectionState, QueryResult, FieldInfo, UpdateCheckResult, EntityMediaPreviewRequest, EntityMediaPreviewResult, LogMonitorConfig, LogMonitorInspectionResult, LogMonitorFileTailResult } from './types/electron';
+import { inspectRemoteLogs, readRemoteLogTail } from './log-monitor-service';
 
 const isMac = process.platform === 'darwin';
 const isWin = process.platform === 'win32';
@@ -18,6 +19,8 @@ const UPDATE_CACHE_TTL_MS = 5 * 60 * 1000;
 const DEFAULT_GITHUB_REPO = 'scarecr0w12/wowmin';
 
 let updateCheckCache: { checkedAt: number; result: UpdateCheckResult } | null = null;
+const ENTITY_MEDIA_CACHE_TTL_MS = 60 * 60 * 1000;
+const entityMediaCache = new Map<string, { expiresAt: number; result: EntityMediaPreviewResult }>();
 
 function getGithubRepoSlug(): string {
   const metadataSources = [packageJson.homepage, (packageJson as { repository?: string | { url?: string } }).repository]
@@ -101,6 +104,130 @@ function compareVersions(current: string, latest: string): number {
 
 function getFallbackReleaseUrl(): string {
   return `https://github.com/${getGithubRepoSlug()}/releases`;
+}
+
+function buildWowheadEntityUrl(entityType: string, id: string): string | null {
+  switch (entityType) {
+    case 'item':
+      return `https://www.wowhead.com/wotlk/item=${encodeURIComponent(id)}`;
+    case 'creature':
+      return `https://www.wowhead.com/wotlk/npc=${encodeURIComponent(id)}`;
+    case 'quest':
+      return `https://www.wowhead.com/wotlk/quest=${encodeURIComponent(id)}`;
+    case 'gameobject':
+      return `https://www.wowhead.com/wotlk/object=${encodeURIComponent(id)}`;
+    default:
+      return null;
+  }
+}
+
+function decodeHtmlEntities(value: string): string {
+  return value
+    .replace(/&amp;/g, '&')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>');
+}
+
+function extractMetaContent(html: string, propertyName: string): string | null {
+  const escapedProperty = propertyName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const patterns = [
+    new RegExp(`<meta[^>]+property=["']${escapedProperty}["'][^>]+content=["']([^"']+)["'][^>]*>`, 'i'),
+    new RegExp(`<meta[^>]+content=["']([^"']+)["'][^>]+property=["']${escapedProperty}["'][^>]*>`, 'i'),
+    new RegExp(`<meta[^>]+name=["']${escapedProperty}["'][^>]+content=["']([^"']+)["'][^>]*>`, 'i'),
+    new RegExp(`<meta[^>]+content=["']([^"']+)["'][^>]+name=["']${escapedProperty}["'][^>]*>`, 'i'),
+  ];
+
+  for (const pattern of patterns) {
+    const match = html.match(pattern);
+    if (match?.[1]) {
+      return decodeHtmlEntities(match[1].trim());
+    }
+  }
+
+  return null;
+}
+
+function extractTextSummary(html: string): string | null {
+  const quickFactsMatch = html.match(/<meta[^>]+name=["']description["'][^>]+content=["']([^"']+)["'][^>]*>/i)
+    || html.match(/<meta[^>]+content=["']([^"']+)["'][^>]+name=["']description["'][^>]*>/i);
+
+  if (!quickFactsMatch?.[1]) return null;
+  return decodeHtmlEntities(quickFactsMatch[1].trim());
+}
+
+async function getEntityMediaPreview(request: EntityMediaPreviewRequest): Promise<EntityMediaPreviewResult> {
+  const entityType = request.entityType.trim().toLowerCase();
+  const id = request.id.trim();
+  const cacheKey = `${entityType}:${id}`;
+  const cached = entityMediaCache.get(cacheKey);
+
+  if (cached && cached.expiresAt > Date.now()) {
+    return cached.result;
+  }
+
+  const sourceUrl = buildWowheadEntityUrl(entityType, id);
+  if (!sourceUrl) {
+    return {
+      status: 'unsupported',
+      sourceLabel: 'Reference Preview',
+      sourceUrl: null,
+      imageUrl: null,
+      title: null,
+      summary: null,
+      message: `No live media source is configured yet for ${entityType}.`,
+    };
+  }
+
+  try {
+    const response = await fetch(sourceUrl, {
+      headers: {
+        Accept: 'text/html,application/xhtml+xml',
+        'Accept-Language': 'en-US,en;q=0.9',
+        'User-Agent': `${app.getName()}/${app.getVersion()} (+https://github.com/${getGithubRepoSlug()})`,
+      },
+    });
+
+    if (!response.ok) {
+      throw new Error(`Source returned ${response.status} ${response.statusText}`);
+    }
+
+    const html = await response.text();
+    const imageUrl = extractMetaContent(html, 'og:image') || extractMetaContent(html, 'twitter:image');
+    const title = extractMetaContent(html, 'og:title') || extractMetaContent(html, 'twitter:title');
+    const summary = extractMetaContent(html, 'og:description') || extractTextSummary(html);
+
+    const result: EntityMediaPreviewResult = {
+      status: imageUrl ? 'ready' : 'error',
+      sourceLabel: 'Wowhead Visual Reference',
+      sourceUrl,
+      imageUrl,
+      title,
+      summary,
+      message: imageUrl
+        ? 'Live reference image fetched successfully.'
+        : 'The reference page loaded, but it did not expose an image preview.',
+    };
+
+    entityMediaCache.set(cacheKey, {
+      expiresAt: Date.now() + ENTITY_MEDIA_CACHE_TTL_MS,
+      result,
+    });
+
+    return result;
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    return {
+      status: 'error',
+      sourceLabel: 'Wowhead Visual Reference',
+      sourceUrl,
+      imageUrl: null,
+      title: null,
+      summary: null,
+      message: `Unable to fetch live reference media right now: ${errorMessage}`,
+    };
+  }
 }
 
 async function checkForUpdates(force = false): Promise<UpdateCheckResult> {
@@ -313,8 +440,30 @@ ipcMain.handle('soap:disconnect', async (): Promise<SoapResult> => {
   return { success: true, message: 'Disconnected.' };
 });
 
+ipcMain.handle('logs:inspect', async (_event, config: LogMonitorConfig): Promise<LogMonitorInspectionResult> => {
+  return inspectRemoteLogs(config);
+});
+
+ipcMain.handle('logs:readTail', async (_event, config: LogMonitorConfig, remotePath: string, maxBytes?: number): Promise<LogMonitorFileTailResult> => {
+  return readRemoteLogTail(config, remotePath, maxBytes);
+});
+
 ipcMain.handle('app:getVersion', (): string => {
   return app.getVersion();
+});
+
+ipcMain.handle('app:openExternal', async (_event, url: string): Promise<SoapResult> => {
+  try {
+    await shell.openExternal(url);
+    return { success: true, message: 'Opened link in your browser.' };
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    return { success: false, message: `Failed to open link: ${errorMessage}` };
+  }
+});
+
+ipcMain.handle('app:getEntityMediaPreview', async (_event, request: EntityMediaPreviewRequest): Promise<EntityMediaPreviewResult> => {
+  return getEntityMediaPreview(request);
 });
 
 ipcMain.handle('update:check', async (_event, force = false): Promise<UpdateCheckResult> => {

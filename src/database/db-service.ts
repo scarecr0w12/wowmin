@@ -162,10 +162,8 @@ export class DatabaseService {
       throw new Error('Not connected to database');
     }
 
-    const [rows] = await this.pool.execute<mysql.RowDataPacket[]>(
-      'DESCRIBE ??',
-      [table]
-    );
+    const escapedTable = this.escapeIdentifier(table);
+    const [rows] = await this.pool.query<mysql.RowDataPacket[]>(`DESCRIBE ${escapedTable}`);
 
     return rows.map((row) => ({
       name: row.Field,
@@ -253,6 +251,13 @@ export class DatabaseService {
       [mysql.Types.GEOMETRY]: 'GEOMETRY',
     };
     return types[type] || `UNKNOWN(${type})`;
+  }
+
+  /**
+   * Escape a MySQL identifier such as a table or column name.
+   */
+  private escapeIdentifier(identifier: string): string {
+    return `\`${identifier.replace(/`/g, '``')}\``;
   }
 }
 

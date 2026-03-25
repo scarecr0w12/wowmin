@@ -16,6 +16,7 @@ and direct database access.
 ### Database Editor (New!)
 - **SQL Query Editor** - Execute raw SQL queries with syntax highlighting
 - **Table Browser** - View and edit any table in the database
+- **Keira-style Entity Workspace** - A dedicated editor column, generated SQL panel, and side rail for live preview + related data
 - **Entity Editors** - Specialized editors for:
   - Creatures (`creature_template`)
   - Items (`item_template`)
@@ -25,6 +26,9 @@ and direct database access.
   - NPC Vendors (`npc_vendor`)
   - Loot Tables (`creature_loot_template`)
   - SmartAI Scripts (`smart_scripts`)
+- **Live Preview Rail** - Quality-coloured preview cards, summary stats, quick lookup links, and in-app visual reference media for supported entities
+- **Related Data Rail** - View vendor, loot, and quest-adjacent rows from the current entity and jump directly into those records
+- **Smart Selectors** - Search-and-apply pickers for common creature/item/quest reference fields
 - **Connection Profiles** - Save and switch between multiple database connections
 - **Query History** - Track and re-run previous queries
 - **Export to CSV** - Export query results to clipboard
@@ -41,6 +45,15 @@ and direct database access.
 - Auto-refresh (5 s) with manual refresh; filter by real players, bots, or all, with bot detection resolved from account usernames when available
 - Optional map image backgrounds: place `0.jpg`, `1.jpg`, `530.jpg`, `571.jpg` in `assets/maps/` (see `assets/maps/README.txt`)
 - Requires a separate database connection to `acore_characters`
+
+### Remote Log Monitor (New!)
+- Connect to a remote AzerothCore host over SSH/SFTP
+- Scan `worldserver.conf` to discover configured `Logger.*` and `Appender.*` definitions
+- Resolve `LogsDir`, packet log paths, file-based appender targets, and dynamic `%s` log patterns
+- List readable remote log files, flag unreadable configured targets, and preview the latest log output directly in-app
+- Optional live follow mode refreshes the selected log preview every few seconds for a lightweight `tail -f` workflow
+- Save remote log connection details and follow-mode settings as part of an existing connection profile
+- Works with password-based SSH/SFTP access today
 
 ### App Updates
 - Automatically checks GitHub releases on startup for newer app versions
@@ -122,12 +135,23 @@ npm start
 3. Enter your MySQL connection details.
 4. Click **Connect** to establish the database connection.
 5. Use the table browser to explore tables, or use the SQL editor for queries.
+6. Open the **Entity Editor** when you want a richer Keira-style workflow for template records instead of raw rows.
 
 ### Entity Editor
 1. In the Database tab, switch to the **Entity Editor** subtab.
 2. Select an entity type (Creature, Item, Quest, etc.).
 3. Enter the entry/ID and click **Load**.
-4. Edit fields and click **Save** to commit changes.
+4. Use the form editor for field groups, the generated SQL panel for diff/full query review, and the right-side preview rail for quick validation.
+5. Use selector buttons on supported reference fields to search for linked items, creatures, or quests without leaving the editor.
+6. Review the **Related Data** panel to inspect nearby vendor/loot/reward rows and jump directly into linked records.
+7. Edit fields and click **Save** to commit changes.
+
+#### Entity Editor highlights
+
+- **Live Preview** updates while you edit, including item quality colouring and richer item/creature/quest summary cards
+- **Visual Reference Media** is fetched into the preview rail for supported entities so you can sanity-check what you loaded without leaving the app
+- **Related Data** helps you move through connected rows faster when working on loot, vendors, or quest rewards
+- **Quick links** let you open external references such as Wowhead in your default browser when deeper research is needed
 
 ### Live Map
 1. Navigate to the **Live Map** tab.
@@ -138,6 +162,22 @@ npm start
 6. Use the mouse wheel or **double-click** to zoom into the map; drag to pan while zoomed, or click the zoom percentage control to reset to `100%`.
 7. Optionally place map image files (`0.jpg`, `1.jpg`, `530.jpg`, `571.jpg`) in `assets/maps/` for visual map backgrounds (see `assets/maps/README.txt`). The app preserves the image aspect ratio automatically.
 8. To generate those from a WoW 3.3.5a client, run `npm run extract:maps -- --source /path/to/WoW` (or the npm shorthand `npm run extract:maps --source /path/to/WoW`) or point it at an extracted `World/Minimaps` folder.
+
+### Remote Log Monitor
+1. Navigate to the **Logs** tab.
+2. Enter the remote SSH host, port, username, password, and the remote `worldserver.conf` path.
+3. Click **Scan Remote Logs** to inspect `LogsDir`, appenders, loggers, packet log settings, and readable files.
+4. Review the summary cards and warnings to spot unreadable configured paths, missing dynamic log matches, or directory access issues.
+5. Select any readable log file in the sidebar to preview its latest output.
+6. Enable **Live follow** if you want the preview to auto-refresh like a lightweight in-app `tail -f`, then choose the refresh interval that fits your server.
+7. Save the connection profile if you want those remote log settings remembered alongside your SOAP/database details.
+
+#### Remote log monitor notes
+
+- The current remote log workflow uses **username/password SSH/SFTP authentication**.
+- The app reads `worldserver.conf` remotely and infers log file locations from `LogsDir`, `Appender.*`, and `PacketLogFile`.
+- Dynamic file appenders such as `gm_%s.log` are matched against the current contents of the resolved logs directory.
+- Live follow pauses automatically when you leave the **Logs** tab, so it does not keep polling in the background unnecessarily.
 
 ### App Updates
 1. Launch the app normally.

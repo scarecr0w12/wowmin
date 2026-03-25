@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta http-equiv="Content-Security-Policy"
-        content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'" />
+      content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'; img-src 'self' https: data:" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>WoW Admin – AzerothCore SOAP Console</title>
   <link rel="stylesheet" href="styles.css" />
@@ -56,6 +56,7 @@
     <button class="tab" data-tab="tickets">✉ Tickets</button>
     <button class="tab" data-tab="database">🗄 Database</button>
     <button class="tab" data-tab="map">🗺 Live Map</button>
+    <button class="tab" data-tab="logs">📜 Logs</button>
     <button class="tab" data-tab="console">▸ Console</button>
   </nav>
 
@@ -811,26 +812,51 @@ SELECT * FROM creature_template WHERE entry = 1;" spellcheck="false"></textarea>
             </div>
           </div>
 
-          <!-- Form + SQL panel stacked -->
-          <div class="entity-split-layout">
-            <div id="entity-editor-content" class="db-entity-content">
-              <p class="text-dark-text-muted text-sm p-4">Select an entity type and enter an ID to edit</p>
-            </div>
-
-            <!-- SQL generation panel (Keira3-style) -->
-            <div id="entity-sql-panel" class="entity-sql-panel">
-              <div class="entity-sql-header">
-                <div class="entity-sql-tabs">
-                  <button class="entity-sql-tab active" data-sqltab="diff">Diff Query</button>
-                  <button class="entity-sql-tab" data-sqltab="full">Full Query</button>
+          <div class="entity-workspace">
+            <div class="entity-main-column">
+              <div class="entity-split-layout">
+                <div id="entity-editor-content" class="db-entity-content">
+                  <p class="text-dark-text-muted text-sm p-4">Select an entity type and enter an ID to edit</p>
                 </div>
-                <div class="entity-sql-actions">
-                  <button id="entity-copy-sql-btn" class="btn-wow text-xs px-2 py-1">Copy SQL</button>
-                  <button id="entity-apply-sql-btn" class="btn-wow-primary text-xs px-2 py-1" disabled>Execute SQL</button>
+
+                <!-- SQL generation panel (Keira3-style) -->
+                <div id="entity-sql-panel" class="entity-sql-panel">
+                  <div class="entity-sql-header">
+                    <div class="entity-sql-tabs">
+                      <button class="entity-sql-tab active" data-sqltab="diff">Diff Query</button>
+                      <button class="entity-sql-tab" data-sqltab="full">Full Query</button>
+                    </div>
+                    <div class="entity-sql-actions">
+                      <button id="entity-copy-sql-btn" class="btn-wow text-xs px-2 py-1">Copy SQL</button>
+                      <button id="entity-apply-sql-btn" class="btn-wow-primary text-xs px-2 py-1" disabled>Execute SQL</button>
+                    </div>
+                  </div>
+                  <pre id="entity-sql-code" class="entity-sql-code">-- Load an entity to generate SQL</pre>
                 </div>
               </div>
-              <pre id="entity-sql-code" class="entity-sql-code">-- Load an entity to generate SQL</pre>
             </div>
+
+            <aside class="entity-side-column">
+              <section class="entity-preview-panel entity-side-panel">
+                <div class="entity-side-header">
+                  <h4>Live Preview</h4>
+                  <span class="entity-side-hint">Updates as you edit</span>
+                </div>
+                <div id="entity-preview-content" class="entity-preview-content">
+                  <p class="text-dark-text-muted text-sm p-4">Load an entity to see a live preview, quality colors, and quick lookup links.</p>
+                </div>
+              </section>
+
+              <section class="entity-relations-panel entity-side-panel">
+                <div class="entity-side-header">
+                  <h4>Related Data</h4>
+                  <span class="entity-side-hint">Main-entity context</span>
+                </div>
+                <div id="entity-relations-content" class="entity-relations-content">
+                  <p class="text-dark-text-muted text-sm p-4">Linked vendors, loot, scripts, and rewards will show up here when available.</p>
+                </div>
+              </section>
+            </aside>
           </div>
         </div>
       </main>
@@ -848,6 +874,24 @@ SELECT * FROM creature_template WHERE entry = 1;" spellcheck="false"></textarea>
       <div class="flags-dialog-actions">
         <button id="flags-cancel-btn" class="btn-wow">Cancel</button>
         <button id="flags-apply-btn" class="btn-wow-primary">Apply</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="selector-overlay" class="selector-overlay hidden">
+    <div class="selector-dialog">
+      <div class="selector-dialog-header">
+        <div>
+          <h4 id="selector-dialog-title">Select Reference</h4>
+          <p id="selector-dialog-subtitle">Search AzerothCore data and apply the result to the current field.</p>
+        </div>
+        <button id="selector-close-btn" class="btn-wow text-xs px-2 py-1" type="button">Close</button>
+      </div>
+      <div class="selector-toolbar">
+        <input id="selector-search-input" class="input-wow" type="text" placeholder="Search by id or name..." />
+      </div>
+      <div id="selector-results" class="selector-results">
+        <p class="text-dark-text-muted text-sm p-4">Start typing to search.</p>
       </div>
     </div>
   </div>
@@ -1051,6 +1095,90 @@ SELECT * FROM creature_template WHERE entry = 1;" spellcheck="false"></textarea>
         </div>
       </div>
 
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════ -->
+  <!-- TAB: Logs                                              -->
+  <!-- ═══════════════════════════════════════════════════════ -->
+  <div id="tab-logs" class="tab-content">
+    <div class="log-monitor-layout">
+      <aside class="log-monitor-sidebar">
+        <div class="card">
+          <div class="card-header"><h3>Remote Log Access</h3></div>
+          <div class="card-body">
+            <div class="form-stack">
+              <label>Host <input type="text" id="log-host" value="127.0.0.1" /></label>
+              <label>Port <input type="number" id="log-port" value="22" /></label>
+              <label>User <input type="text" id="log-username" value="root" /></label>
+              <label>Password <input type="password" id="log-password" /></label>
+              <label>worldserver.conf Path <input type="text" id="log-config-path" value="/etc/azerothcore/worldserver.conf" /></label>
+              <div class="log-monitor-controls-row">
+                <label class="auto-refresh-toggle log-follow-toggle">
+                  <input type="checkbox" id="log-follow-enabled" /> Live follow
+                </label>
+                <label class="log-refresh-interval-label">Refresh
+                  <select id="log-refresh-interval">
+                    <option value="2">2s</option>
+                    <option value="5" selected>5s</option>
+                    <option value="10">10s</option>
+                    <option value="15">15s</option>
+                    <option value="30">30s</option>
+                  </select>
+                </label>
+              </div>
+              <div class="btn-row">
+                <button id="log-scan-btn" class="btn btn-accent">Scan Remote Logs</button>
+                <button id="log-refresh-preview-btn" class="btn" disabled>Refresh Preview</button>
+              </div>
+              <div id="log-status" class="action-result"></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card" style="margin-top:10px;">
+          <div class="card-header"><h3>Readable Files</h3></div>
+          <div class="card-body">
+            <div id="log-files-list" class="log-files-list">
+              <p class="placeholder">Scan a server to see readable log files.</p>
+            </div>
+          </div>
+        </div>
+      </aside>
+
+      <main class="log-monitor-main">
+        <div id="log-summary" class="log-monitor-summary">
+          <p class="placeholder">Connect to a server over SSH/SFTP and scan <code>worldserver.conf</code> to discover configured loggers, appenders, and readable log files.</p>
+        </div>
+
+        <div class="log-monitor-panels">
+          <section class="card">
+            <div class="card-header"><h3>Preview</h3></div>
+            <div class="card-body">
+              <div id="log-preview-meta" class="log-preview-meta">No file selected.</div>
+              <pre id="log-preview-output" class="log-preview-output">Select a readable file to preview its latest output.</pre>
+            </div>
+          </section>
+
+          <section class="card card-full">
+            <div class="card-header"><h3>Appenders</h3></div>
+            <div class="card-body">
+              <div id="log-appenders-table" class="log-monitor-table-wrap">
+                <p class="placeholder">Appender details will appear here after a scan.</p>
+              </div>
+            </div>
+          </section>
+
+          <section class="card card-full">
+            <div class="card-header"><h3>Loggers</h3></div>
+            <div class="card-body">
+              <div id="log-loggers-table" class="log-monitor-table-wrap">
+                <p class="placeholder">Logger mappings will appear here after a scan.</p>
+              </div>
+            </div>
+          </section>
+        </div>
+      </main>
     </div>
   </div>
 

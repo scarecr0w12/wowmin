@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron';
-import { SoapConfig, SoapResult, DbConfig, DbConnectionState, QueryResult, FieldInfo, ConnectionProfile, UpdateCheckResult } from './types/electron';
+import { SoapConfig, SoapResult, DbConfig, DbConnectionState, QueryResult, FieldInfo, ConnectionProfile, UpdateCheckResult, EntityMediaPreviewRequest, EntityMediaPreviewResult, LogMonitorConfig, LogMonitorInspectionResult, LogMonitorFileTailResult } from './types/electron';
 
 // Type-safe IPC wrapper for renderer process
 const electronAPI = {
@@ -13,9 +13,20 @@ const electronAPI = {
       ipcRenderer.invoke('soap:disconnect'),
   },
 
+  logs: {
+    inspect: (config: LogMonitorConfig): Promise<LogMonitorInspectionResult> =>
+      ipcRenderer.invoke('logs:inspect', config),
+    readTail: (config: LogMonitorConfig, remotePath: string, maxBytes = 32 * 1024): Promise<LogMonitorFileTailResult> =>
+      ipcRenderer.invoke('logs:readTail', config, remotePath, maxBytes),
+  },
+
   app: {
     getVersion: (): Promise<string> =>
       ipcRenderer.invoke('app:getVersion'),
+    openExternal: (url: string): Promise<SoapResult> =>
+      ipcRenderer.invoke('app:openExternal', url),
+    getEntityMediaPreview: (request: EntityMediaPreviewRequest): Promise<EntityMediaPreviewResult> =>
+      ipcRenderer.invoke('app:getEntityMediaPreview', request),
   },
 
   update: {
