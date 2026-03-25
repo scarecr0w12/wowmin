@@ -50,7 +50,8 @@ and direct database access.
 - Connect to a remote AzerothCore host over SSH/SFTP
 - Scan `worldserver.conf` to discover configured `Logger.*` and `Appender.*` definitions
 - Resolve `LogsDir`, packet log paths, file-based appender targets, and dynamic `%s` log patterns
-- List readable remote log files, flag unreadable configured targets, and preview the latest log output directly in-app
+- Pick a logger first, then choose from the live readable files currently associated with that logger for a much cleaner in-app tail workflow
+- Flag unreadable configured targets and preview the latest log output directly in-app
 - Optional live follow mode refreshes the selected log preview every few seconds for a lightweight `tail -f` workflow
 - Save remote log connection details and follow-mode settings as part of an existing connection profile
 - Works with password-based SSH/SFTP access today
@@ -168,15 +169,17 @@ npm start
 2. Enter the remote SSH host, port, username, password, and the remote `worldserver.conf` path.
 3. Click **Scan Remote Logs** to inspect `LogsDir`, appenders, loggers, packet log settings, and readable files.
 4. Review the summary cards and warnings to spot unreadable configured paths, missing dynamic log matches, or directory access issues.
-5. Select any readable log file in the sidebar to preview its latest output.
-6. Enable **Live follow** if you want the preview to auto-refresh like a lightweight in-app `tail -f`, then choose the refresh interval that fits your server.
-7. Save the connection profile if you want those remote log settings remembered alongside your SOAP/database details.
+5. Use the **Logger** picker to choose the subsystem you want to inspect, then choose one of its currently available **Live File** entries.
+6. Review the file details panel to confirm the resolved path, timestamp, size, and matched appender hints before loading the preview.
+7. Enable **Live follow** if you want the preview to auto-refresh like a lightweight in-app `tail -f`, then choose the refresh interval that fits your server.
+8. Save the connection profile if you want those remote log settings remembered alongside your SOAP/database details.
 
 #### Remote log monitor notes
 
 - The current remote log workflow uses **username/password SSH/SFTP authentication**.
 - The app reads `worldserver.conf` remotely and infers log file locations from `LogsDir`, `Appender.*`, and `PacketLogFile`.
 - Dynamic file appenders such as `gm_%s.log` are matched against the current contents of the resolved logs directory.
+- Logger-to-file matching is resolved in-app, so the live file picker only shows files currently associated with the selected logger instead of every readable file in the logs directory.
 - Live follow pauses automatically when you leave the **Logs** tab, so it does not keep polling in the background unnecessarily.
 
 ### App Updates

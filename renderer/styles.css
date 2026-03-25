@@ -2135,49 +2135,106 @@ tbody tr:hover { background: rgba(233,69,96,.05); }
   gap: 14px;
 }
 
-.log-files-list {
+.log-file-picker {
   display: flex;
   flex-direction: column;
   gap: 8px;
 }
 
-.log-file-item {
+.log-picker-label {
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
   gap: 4px;
+  font-size: 11px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.log-picker-select {
   width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-input);
+  color: var(--text);
+  font-size: 13px;
+  outline: none;
+}
+
+.log-picker-select:focus {
+  border-color: var(--accent);
+}
+
+.log-picker-select:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.log-file-details {
   padding: 10px 12px;
   background: var(--bg-output);
   border: 1px solid var(--border);
   border-radius: 6px;
-  color: var(--text);
-  text-align: left;
-  cursor: pointer;
 }
 
-.log-file-item:hover:not(:disabled),
-.log-file-item.selected {
-  border-color: var(--accent);
-  background: rgba(233,69,96,0.1);
-}
-
-.log-file-item:disabled {
-  opacity: 0.55;
-  cursor: not-allowed;
-}
-
-.log-file-item.is-readable .log-file-name {
-  color: var(--green);
-}
-
-.log-file-item.is-unreadable .log-file-name {
-  color: var(--accent);
-}
-
-.log-file-name {
+.log-file-detail-name {
   font-size: 13px;
   font-weight: 700;
+  color: var(--green);
+  margin-bottom: 4px;
+}
+
+.log-file-detail-meta,
+.log-file-detail-tags {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1.5;
+  word-break: break-word;
+}
+
+.log-file-detail-meta {
+  color: var(--text-muted);
+}
+
+.log-file-detail-tags {
+  color: var(--blue);
+  margin-top: 4px;
+}
+
+.log-monitor-hint {
+  margin-bottom: 10px;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.log-logger-select {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: rgba(255,255,255,0.03);
+  color: var(--text);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.log-logger-select:hover {
+  border-color: var(--accent);
+  color: var(--accent-hover);
+}
+
+.log-logger-select.selected {
+  border-color: var(--accent);
+  background: rgba(233,69,96,0.16);
+  color: #fff;
+}
+
+.log-monitor-table tbody tr.selected {
+  background: rgba(233,69,96,.08);
 }
 
 .log-file-meta,

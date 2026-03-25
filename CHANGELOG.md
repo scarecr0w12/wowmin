@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.2.1] - 2026-03-25
+
+### Improved
+
+- Remote log monitoring now uses a cleaner logger-first workflow: pick a logger, then choose from its currently available live files instead of scrolling through a giant readable-file list
+- The Logs sidebar now uses explicit **Logger** and **Live File** selectors with a compact details panel for the selected file path, size, timestamp, and source hints
+
+### Fixed
+
+- Remote logger mappings now include dynamic `%s` appender matches when resolving live files, so logger-specific file selection stays accurate for rotating or pattern-based logs
+- Selecting a live log file is now more reliable thanks to the explicit selector-based UI, avoiding the previous finicky card-click behavior
+
 ## [2.2.0] - 2026-03-25
 
 ### Added

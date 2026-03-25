@@ -82,7 +82,9 @@ const $logScanBtn = $<HTMLButtonElement>('log-scan-btn');
 const $logRefreshPreviewBtn = $<HTMLButtonElement>('log-refresh-preview-btn');
 const $logStatus = $<HTMLElement>('log-status');
 const $logSummary = $<HTMLElement>('log-summary');
-const $logFilesList = $<HTMLElement>('log-files-list');
+const $logLoggerSelect = $<HTMLSelectElement>('log-logger-select');
+const $logFileSelect = $<HTMLSelectElement>('log-file-select');
+const $logFileDetails = $<HTMLElement>('log-file-details');
 const $logPreviewMeta = $<HTMLElement>('log-preview-meta');
 const $logPreviewOutput = $<HTMLElement>('log-preview-output');
 const $logAppendersTable = $<HTMLElement>('log-appenders-table');
@@ -130,6 +132,7 @@ interface ModalOptions {
 
 interface LogMonitorViewState {
   inspection: LogMonitorInspectionResult | null;
+  selectedLoggerName: string | null;
   selectedFilePath: string | null;
   followTimer: ReturnType<typeof setTimeout> | null;
   previewRequestToken: number;
@@ -138,6 +141,7 @@ interface LogMonitorViewState {
 
 const logMonitorState: LogMonitorViewState = {
   inspection: null,
+  selectedLoggerName: null,
   selectedFilePath: null,
   followTimer: null,
   previewRequestToken: 0,
@@ -418,6 +422,7 @@ function syncLogFollowPolling(immediate = false): void {
 function resetLogMonitorView(message = 'Scan a server to see readable log files.'): void {
   stopLogFollowLoop();
   logMonitorState.inspection = null;
+  logMonitorState.selectedLoggerName = null;
   logMonitorState.selectedFilePath = null;
   renderLogInspection(null);
   if ($logPreviewMeta) $logPreviewMeta.textContent = 'No file selected.';
@@ -1383,6 +1388,31 @@ function formatTimestamp(value: string | null): string {
   return `${date.toLocaleDateString()} ${date.toLocaleTimeString()}`;
 }
 
+function getLogMonitorSelectedLogger(result: LogMonitorInspectionResult | null) {
+  if (!result || !logMonitorState.selectedLoggerName) return null;
+  return result.loggers.find((logger) => logger.name === logMonitorState.selectedLoggerName) ?? null;
+}
+
+function getLogMonitorFilesForSelectedLogger(result: LogMonitorInspectionResult | null) {
+  if (!result) return [];
+
+  const selectedLogger = getLogMonitorSelectedLogger(result);
+  if (!selectedLogger) return [];
+
+  const allowedPaths = new Set(selectedLogger.resolvedFiles);
+  return result.files.filter((file) => file.readable && allowedPaths.has(file.path));
+}
+
+function getLogMonitorSelectedFile(result: LogMonitorInspectionResult | null) {
+  if (!result || !logMonitorState.selectedFilePath) return null;
+  return result.files.find((file) => file.path === logMonitorState.selectedFilePath) ?? null;
+}
+
+function selectLogLogger(loggerName: string | null): void {
+  logMonitorState.selectedLoggerName = loggerName;
+  renderLogInspection(logMonitorState.inspection);
+}
+
 function renderLogSummary(result: LogMonitorInspectionResult | null): void {
   if (!$logSummary) return;
 
@@ -1410,30 +1440,54 @@ function renderLogSummary(result: LogMonitorInspectionResult | null): void {
 }
 
 function renderLogFileList(result: LogMonitorInspectionResult | null): void {
-  if (!$logFilesList) return;
+  if (!$logLoggerSelect || !$logFileSelect || !$logFileDetails) return;
 
   if (!result) {
-    $logFilesList.innerHTML = '<p class="placeholder">Scan a server to see readable log files.</p>';
+    $logLoggerSelect.innerHTML = '<option value="">Scan a server first</option>';
+    $logLoggerSelect.disabled = true;
+    $logFileSelect.innerHTML = '<option value="">Choose a logger first</option>';
+    $logFileSelect.disabled = true;
+    $logFileDetails.innerHTML = '<p class="placeholder">Scan a server to choose a logger and inspect its live files.</p>';
     return;
   }
 
-  const files = result.files;
+  const loggersWithFiles = result.loggers.filter((logger) => result.files.some((file) => file.readable && logger.resolvedFiles.includes(file.path)));
+  const loggerOptions = (loggersWithFiles.length ? loggersWithFiles : result.loggers)
+    .map((logger) => `<option value="${escapeHtml(logger.name)}" ${logger.name === logMonitorState.selectedLoggerName ? 'selected' : ''}>${escapeHtml(logger.name)}</option>`)
+    .join('');
+
+  $logLoggerSelect.innerHTML = loggerOptions || '<option value="">No loggers found</option>';
+  $logLoggerSelect.disabled = !result.loggers.length;
+
+  const selectedLogger = getLogMonitorSelectedLogger(result);
+  if (!selectedLogger) {
+    $logFileSelect.innerHTML = '<option value="">Choose a logger first</option>';
+    $logFileSelect.disabled = true;
+    $logFileDetails.innerHTML = '<p class="placeholder">Select a logger to see the files it currently writes to.</p>';
+    return;
+  }
+
+  const files = getLogMonitorFilesForSelectedLogger(result);
   if (!files.length) {
-    $logFilesList.innerHTML = '<p class="placeholder">No log files were discovered from the current configuration.</p>';
+    $logFileSelect.innerHTML = '<option value="">No readable files available</option>';
+    $logFileSelect.disabled = true;
+    $logFileDetails.innerHTML = `<p class="placeholder">${escapeHtml(selectedLogger.name)} does not have any readable files available right now.</p>`;
     return;
   }
 
-  $logFilesList.innerHTML = files.map((file) => {
-    const selected = logMonitorState.selectedFilePath === file.path;
-    const stateClass = file.readable ? 'is-readable' : 'is-unreadable';
-    const sources = [...new Set([...file.sourceHints, ...file.matchedAppenderNames])].join(' · ') || 'discovered';
-    return `<button type="button" class="log-file-item ${stateClass} ${selected ? 'selected' : ''}" data-log-file-path="${escapeHtml(file.path)}" ${file.readable ? '' : 'disabled'}>
-      <span class="log-file-name">${escapeHtml(file.name)}</span>
-      <span class="log-file-meta">${escapeHtml(file.path)}</span>
-      <span class="log-file-meta">${escapeHtml(formatFileSize(file.size))} · ${escapeHtml(formatTimestamp(file.modifiedAt))}</span>
-      <span class="log-file-tags">${escapeHtml(sources)}</span>
-    </button>`;
-  }).join('');
+  $logFileSelect.innerHTML = files.map((file) => `
+    <option value="${escapeHtml(file.path)}" ${file.path === logMonitorState.selectedFilePath ? 'selected' : ''}>${escapeHtml(file.name)}</option>`).join('');
+  $logFileSelect.disabled = false;
+
+  const selectedFile = getLogMonitorSelectedFile(result) ?? files[0];
+  const sources = selectedFile ? [...new Set([...selectedFile.sourceHints, ...selectedFile.matchedAppenderNames])].join(' · ') || 'discovered' : '—';
+  $logFileDetails.innerHTML = selectedFile
+    ? `
+      <div class="log-file-detail-name">${escapeHtml(selectedFile.name)}</div>
+      <div class="log-file-detail-meta">${escapeHtml(selectedFile.path)}</div>
+      <div class="log-file-detail-meta">${escapeHtml(formatFileSize(selectedFile.size))} · ${escapeHtml(formatTimestamp(selectedFile.modifiedAt))}</div>
+      <div class="log-file-detail-tags">${escapeHtml(sources)}</div>`
+    : '<p class="placeholder">Choose a file to load its live preview.</p>';
 }
 
 function renderAppenderTable(result: LogMonitorInspectionResult | null): void {
@@ -1478,6 +1532,22 @@ function renderLoggerTable(result: LogMonitorInspectionResult | null): void {
     return;
   }
 
+  const rows = result.loggers.map((logger) => {
+    const readableFiles = result.files.filter((file) => file.readable && logger.resolvedFiles.includes(file.path));
+    const selected = logMonitorState.selectedLoggerName === logger.name;
+    return `
+      <tr class="${selected ? 'selected' : ''}" data-log-logger-name="${escapeHtml(logger.name)}">
+        <td>
+          <button type="button" class="log-logger-select ${selected ? 'selected' : ''}" data-log-logger-name="${escapeHtml(logger.name)}">
+            ${escapeHtml(logger.name)}
+          </button>
+        </td>
+        <td>${escapeHtml(logger.logLevelLabel)}</td>
+        <td>${escapeHtml(logger.appenderNames.join(', ') || '—')}</td>
+        <td>${escapeHtml(readableFiles.map((file) => file.name).join(', ') || '—')}</td>
+      </tr>`;
+  }).join('');
+
   $logLoggersTable.innerHTML = `
     <table class="log-monitor-table">
       <thead>
@@ -1489,13 +1559,7 @@ function renderLoggerTable(result: LogMonitorInspectionResult | null): void {
         </tr>
       </thead>
       <tbody>
-        ${result.loggers.map((logger) => `
-          <tr>
-            <td>${escapeHtml(logger.name)}</td>
-            <td>${escapeHtml(logger.logLevelLabel)}</td>
-            <td>${escapeHtml(logger.appenderNames.join(', ') || '—')}</td>
-            <td>${escapeHtml(logger.resolvedFiles.join(', ') || '—')}</td>
-          </tr>`).join('')}
+        ${rows}
       </tbody>
     </table>`;
 }
@@ -1510,14 +1574,28 @@ function renderLogPreviewPlaceholder(message: string): void {
 }
 
 function renderLogInspection(result: LogMonitorInspectionResult | null): void {
+  if (result && logMonitorState.selectedLoggerName && !result.loggers.some((logger) => logger.name === logMonitorState.selectedLoggerName)) {
+    logMonitorState.selectedLoggerName = null;
+  }
+
+  if (result && !logMonitorState.selectedLoggerName) {
+    const firstLoggerWithFiles = result.loggers.find((logger) => result.files.some((file) => file.readable && logger.resolvedFiles.includes(file.path)));
+    logMonitorState.selectedLoggerName = firstLoggerWithFiles?.name ?? result.loggers[0]?.name ?? null;
+  }
+
+  const availableFilePaths = new Set(getLogMonitorFilesForSelectedLogger(result).map((file) => file.path));
+  if (!logMonitorState.selectedFilePath || !availableFilePaths.has(logMonitorState.selectedFilePath)) {
+    logMonitorState.selectedFilePath = null;
+  }
+
   renderLogSummary(result);
   renderLogFileList(result);
   renderAppenderTable(result);
   renderLoggerTable(result);
 
-  if (!result?.files.some((file) => file.path === logMonitorState.selectedFilePath && file.readable)) {
-    logMonitorState.selectedFilePath = null;
-    renderLogPreviewPlaceholder('No file selected.');
+  if (!logMonitorState.selectedFilePath) {
+    const selectedLogger = getLogMonitorSelectedLogger(result);
+    renderLogPreviewPlaceholder(selectedLogger ? `No file selected for logger ${selectedLogger.name}.` : 'No logger selected.');
     if ($logRefreshPreviewBtn) $logRefreshPreviewBtn.disabled = true;
   }
 
@@ -1529,6 +1607,15 @@ async function loadLogPreview(filePath: string, options: { silent?: boolean } = 
   const { silent = false } = options;
   stopLogFollowLoop();
   logMonitorState.selectedFilePath = filePath;
+  if (logMonitorState.inspection && logMonitorState.selectedLoggerName) {
+    const selectedLoggerFiles = getLogMonitorFilesForSelectedLogger(logMonitorState.inspection);
+    if (!selectedLoggerFiles.some((file) => file.path === filePath)) {
+      const matchingLogger = logMonitorState.inspection.loggers.find((logger) => logger.resolvedFiles.includes(filePath));
+      if (matchingLogger) {
+        logMonitorState.selectedLoggerName = matchingLogger.name;
+      }
+    }
+  }
   renderLogFileList(logMonitorState.inspection);
 
   const requestToken = ++logMonitorState.previewRequestToken;
@@ -1587,7 +1674,7 @@ async function scanRemoteLogs(): Promise<void> {
   showResult($logStatus, result.success, result.message);
 
   if (result.success) {
-    const firstReadableFile = result.files.find((file) => file.readable);
+    const firstReadableFile = getLogMonitorFilesForSelectedLogger(result)[0] ?? result.files.find((file) => file.readable);
     if (firstReadableFile) {
       await loadLogPreview(firstReadableFile.path);
     }
@@ -1625,12 +1712,33 @@ $logRefreshInterval?.addEventListener('change', () => {
   });
 });
 
-$logFilesList?.addEventListener('click', (event) => {
-  const button = (event.target as HTMLElement).closest<HTMLButtonElement>('[data-log-file-path]');
-  if (!button) return;
-  const filePath = button.dataset.logFilePath;
+$logLoggerSelect?.addEventListener('change', () => {
+  const loggerName = $logLoggerSelect.value || null;
+  selectLogLogger(loggerName);
+  const firstReadableFile = getLogMonitorFilesForSelectedLogger(logMonitorState.inspection)[0];
+  if (firstReadableFile) {
+    void loadLogPreview(firstReadableFile.path);
+  }
+});
+
+$logFileSelect?.addEventListener('change', () => {
+  const filePath = $logFileSelect.value;
   if (!filePath) return;
   void loadLogPreview(filePath);
+});
+
+$logLoggersTable?.addEventListener('click', (event) => {
+  const button = (event.target as HTMLElement).closest<HTMLElement>('[data-log-logger-name]');
+  if (!button) return;
+
+  const loggerName = button.dataset.logLoggerName;
+  if (!loggerName || loggerName === logMonitorState.selectedLoggerName) return;
+
+  selectLogLogger(loggerName);
+  const firstReadableFile = getLogMonitorFilesForSelectedLogger(logMonitorState.inspection)[0];
+  if (firstReadableFile) {
+    void loadLogPreview(firstReadableFile.path);
+  }
 });
 
 // ═══════════════════════════════════════════════════════════════════════════

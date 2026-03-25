@@ -143,6 +143,10 @@ function patternToRegExp(pattern: string): RegExp {
   return new RegExp(`^${escaped}$`, 'i');
 }
 
+function uniquePaths(paths: Array<string | null | undefined>): string[] {
+  return [...new Set(paths.filter((value): value is string => Boolean(value)))];
+}
+
 function buildConnectConfig(config: LogMonitorConfig): ConnectConfig {
   return {
     host: config.host.trim(),
@@ -353,9 +357,12 @@ export async function inspectRemoteLogs(config: LogMonitorConfig): Promise<LogMo
       const appenderList = splitIndex >= 0 ? rawValue.slice(splitIndex + 1).trim() : '';
       const logLevel = Number(levelPart || 0);
       const appenderNames = appenderList ? appenderList.split(/\s+/).filter(Boolean) : [];
-      const resolvedFiles = [...new Set(appenderNames
-        .map((appenderName) => appendersByName.get(appenderName)?.resolvedPath)
-        .filter((resolvedPath): resolvedPath is string => Boolean(resolvedPath)))];
+      const resolvedFiles = uniquePaths(appenderNames
+        .flatMap((appenderName) => {
+          const appender = appendersByName.get(appenderName);
+          if (!appender) return [];
+          return [appender.resolvedPath, ...(appender.matchedDynamicFiles ?? [])];
+        }));
 
       loggers.push({
         name,
@@ -472,6 +479,15 @@ export async function inspectRemoteLogs(config: LogMonitorConfig): Promise<LogMo
           existing.sourceHints = [...new Set([...existing.sourceHints, 'dynamic-match'])];
         }
       }
+    }
+
+    for (const logger of loggers) {
+      logger.resolvedFiles = uniquePaths(logger.appenderNames
+        .flatMap((appenderName) => {
+          const appender = appendersByName.get(appenderName);
+          if (!appender) return [];
+          return [appender.resolvedPath, ...(appender.matchedDynamicFiles ?? [])];
+        }));
     }
 
     const files = [...filesByPath.values()].sort((left, right) => left.path.localeCompare(right.path));

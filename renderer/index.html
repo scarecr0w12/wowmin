@@ -1137,10 +1137,22 @@ SELECT * FROM creature_template WHERE entry = 1;" spellcheck="false"></textarea>
         </div>
 
         <div class="card" style="margin-top:10px;">
-          <div class="card-header"><h3>Readable Files</h3></div>
+          <div class="card-header"><h3>Logger Files</h3></div>
           <div class="card-body">
-            <div id="log-files-list" class="log-files-list">
-              <p class="placeholder">Scan a server to see readable log files.</p>
+            <div class="log-file-picker">
+              <label class="log-picker-label">Logger
+                <select id="log-logger-select" class="log-picker-select">
+                  <option value="">Scan a server first</option>
+                </select>
+              </label>
+              <label class="log-picker-label">Live File
+                <select id="log-file-select" class="log-picker-select" disabled>
+                  <option value="">Choose a logger first</option>
+                </select>
+              </label>
+              <div id="log-file-details" class="log-file-details">
+                <p class="placeholder">Scan a server to choose a logger and inspect its live files.</p>
+              </div>
             </div>
           </div>
         </div>
@@ -1172,6 +1184,7 @@ SELECT * FROM creature_template WHERE entry = 1;" spellcheck="false"></textarea>
           <section class="card card-full">
             <div class="card-header"><h3>Loggers</h3></div>
             <div class="card-body">
+              <p class="log-monitor-hint">Click a logger to filter the live file list to only the files that logger is currently writing to.</p>
               <div id="log-loggers-table" class="log-monitor-table-wrap">
                 <p class="placeholder">Logger mappings will appear here after a scan.</p>
               </div>
