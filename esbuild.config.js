@@ -10,7 +10,9 @@ const mainConfig = {
   platform: 'node',
   target: 'node18',
   outfile: 'dist/main.js',
-  external: ['electron', 'mysql2', 'electron-store'],
+  // Keep native / platform-specific runtime dependencies external so CI builds
+  // do not try to inline optional binaries that vary across runners.
+  external: ['electron', 'mysql2', 'electron-store', 'ssh2', 'xml2js'],
   sourcemap: true,
   minify: !isDev,
   format: 'cjs',
