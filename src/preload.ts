@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron';
-import { SoapConfig, SoapResult, DbConfig, DbConnectionState, QueryResult, FieldInfo, ConnectionProfile, UpdateCheckResult, EntityMediaPreviewRequest, EntityMediaPreviewResult, LogMonitorConfig, LogMonitorInspectionResult, LogMonitorFileTailResult } from './types/electron';
+import { SoapConfig, SoapResult, DbConfig, DbConnectionState, QueryResult, FieldInfo, ConnectionProfile, UpdateCheckResult, EntityMediaPreviewRequest, EntityMediaPreviewResult, LogMonitorConfig, LogMonitorInspectionResult, LogMonitorFileTailResult, LlmChatRequest, LlmChatResponse } from './types/electron';
 
 // Type-safe IPC wrapper for renderer process
 const electronAPI = {
@@ -34,6 +34,11 @@ const electronAPI = {
       ipcRenderer.invoke('update:check', force),
     openReleasePage: (url?: string): Promise<SoapResult> =>
       ipcRenderer.invoke('update:openReleasePage', url),
+  },
+
+  llm: {
+    chat: (request: LlmChatRequest): Promise<LlmChatResponse> =>
+      ipcRenderer.invoke('llm:chat', request),
   },
 
   // Database operations

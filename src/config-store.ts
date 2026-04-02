@@ -1,7 +1,7 @@
 import { app } from 'electron';
 import * as path from 'path';
 import * as fs from 'fs';
-import { ConnectionProfile, SoapConfig, DbConfig, LogMonitorConfig } from './types/electron';
+import { ConnectionProfile, SoapConfig, DbConfig, LogMonitorConfig, LlmConfig } from './types/electron';
 
 interface ConfigData {
   profiles: ConnectionProfile[];
@@ -33,6 +33,12 @@ const DEFAULT_LOG_MONITOR_CONFIG: LogMonitorConfig = {
   worldserverConfigPath: '/etc/azerothcore/worldserver.conf',
   liveFollow: false,
   refreshIntervalSeconds: 5,
+};
+
+const DEFAULT_LLM_CONFIG: LlmConfig = {
+  endpointUrl: 'https://api.openai.com/v1',
+  apiKey: '',
+  model: 'gpt-4o-mini',
 };
 
 const DEFAULT_CONFIG: ConfigData = {
@@ -169,6 +175,7 @@ export class ConfigStore {
       'acore_characters',
     );
     const logMonitorConfig = this.normalizeLogMonitorConfig(profile.logMonitorConfig, legacySoapConfig);
+    const llmConfig = this.normalizeLlmConfig(profile.llmConfig);
 
     return {
       id: profile.id || this.generateId(),
@@ -179,6 +186,7 @@ export class ConfigStore {
       databaseConfig,
       mapDatabaseConfig,
       logMonitorConfig,
+      llmConfig,
       createdAt: profile.createdAt || new Date().toISOString(),
       updatedAt: profile.updatedAt || new Date().toISOString(),
     };
@@ -218,6 +226,16 @@ export class ConfigStore {
       worldserverConfigPath: source.worldserverConfigPath?.trim() || DEFAULT_LOG_MONITOR_CONFIG.worldserverConfigPath,
       liveFollow: typeof source.liveFollow === 'boolean' ? source.liveFollow : DEFAULT_LOG_MONITOR_CONFIG.liveFollow,
       refreshIntervalSeconds: this.normalizeRefreshInterval(source.refreshIntervalSeconds, DEFAULT_LOG_MONITOR_CONFIG.refreshIntervalSeconds),
+    };
+  }
+
+  private normalizeLlmConfig(primary?: Partial<LlmConfig>): LlmConfig {
+    const source = primary || {};
+
+    return {
+      endpointUrl: source.endpointUrl?.trim() || DEFAULT_LLM_CONFIG.endpointUrl,
+      apiKey: source.apiKey || DEFAULT_LLM_CONFIG.apiKey,
+      model: source.model?.trim() || DEFAULT_LLM_CONFIG.model,
     };
   }
 

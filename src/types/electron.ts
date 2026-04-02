@@ -115,6 +115,38 @@ export interface LogMonitorFileTailResult {
   message: string;
 }
 
+export interface LlmConfig {
+  endpointUrl: string;
+  apiKey: string;
+  model: string;
+}
+
+export type LlmTaskType = 'general' | 'command' | 'sql' | 'item' | 'smartai';
+
+export interface LlmChatContext {
+  taskType: LlmTaskType;
+  activeDatabase?: string | null;
+  currentTable?: string | null;
+  currentEntityType?: string | null;
+  currentEntityId?: string | null;
+  selectedTables?: string[];
+  currentEntityData?: Record<string, unknown> | null;
+  currentSmartAiRows?: Record<string, unknown>[] | null;
+}
+
+export interface LlmChatRequest {
+  config: LlmConfig;
+  prompt: string;
+  context?: LlmChatContext;
+}
+
+export interface LlmChatResponse {
+  success: boolean;
+  message: string;
+  content: string;
+  model?: string;
+}
+
 export interface UpdateCheckResult {
   currentVersion: string;
   latestVersion: string | null;
@@ -153,6 +185,7 @@ export interface ConnectionProfile {
   databaseConfig: DbConfig;
   mapDatabaseConfig: DbConfig;
   logMonitorConfig: LogMonitorConfig;
+  llmConfig: LlmConfig;
   createdAt: string;
   updatedAt: string;
 }
@@ -171,6 +204,7 @@ export type IpcChannels = {
   'app:getEntityMediaPreview': (request: EntityMediaPreviewRequest) => EntityMediaPreviewResult;
   'update:check': (force?: boolean) => UpdateCheckResult;
   'update:openReleasePage': (url?: string) => SoapResult;
+  'llm:chat': (request: LlmChatRequest) => LlmChatResponse;
   
   // Database operations
   'db:connect': (config: DbConfig) => DbConnectionState;

@@ -4,7 +4,7 @@ import packageJson from '../package.json';
 import { SoapClient } from './soap-client';
 import { ConfigStore } from './config-store';
 import { getDbService, DatabaseService } from './database/db-service';
-import { SoapConfig, SoapResult, ConnectionProfile, DbConfig, DbConnectionState, QueryResult, FieldInfo, UpdateCheckResult, EntityMediaPreviewRequest, EntityMediaPreviewResult, LogMonitorConfig, LogMonitorInspectionResult, LogMonitorFileTailResult } from './types/electron';
+import { SoapConfig, SoapResult, ConnectionProfile, DbConfig, DbConnectionState, QueryResult, FieldInfo, UpdateCheckResult, EntityMediaPreviewRequest, EntityMediaPreviewResult, LogMonitorConfig, LogMonitorInspectionResult, LogMonitorFileTailResult, LlmChatRequest, LlmChatResponse, LlmTaskType } from './types/electron';
 import { inspectRemoteLogs, readRemoteLogTail } from './log-monitor-service';
 
 const isMac = process.platform === 'darwin';
@@ -17,6 +17,16 @@ const dbService = getDbService();
 const mapDbService = new DatabaseService();
 const UPDATE_CACHE_TTL_MS = 5 * 60 * 1000;
 const DEFAULT_GITHUB_REPO = 'scarecr0w12/wowmin';
+const ENTITY_TABLE_BY_TYPE: Record<string, string> = {
+  creature: 'creature_template',
+  item: 'item_template',
+  quest: 'quest_template',
+  spell: 'spell_dbc',
+  gameobject: 'gameobject_template',
+  npc: 'npc_vendor',
+  loot: 'creature_loot_template',
+  smartai: 'smart_scripts',
+};
 
 let updateCheckCache: { checkedAt: number; result: UpdateCheckResult } | null = null;
 const ENTITY_MEDIA_CACHE_TTL_MS = 60 * 60 * 1000;
@@ -104,6 +114,96 @@ function compareVersions(current: string, latest: string): number {
 
 function getFallbackReleaseUrl(): string {
   return `https://github.com/${getGithubRepoSlug()}/releases`;
+}
+
+function normalizeLlmEndpointUrl(rawUrl: string): string {
+  const trimmed = rawUrl.trim();
+  if (!trimmed) {
+    throw new Error('LLM endpoint URL is required.');
+  }
+
+  if (/\/chat\/completions\/?$/i.test(trimmed)) {
+    return trimmed;
+  }
+
+  return `${trimmed.replace(/\/$/, '')}/chat/completions`;
+}
+
+function getDefaultSchemaTables(taskType: LlmTaskType): string[] {
+  switch (taskType) {
+    case 'item':
+      return ['item_template', 'item_template_addon', 'npc_vendor'];
+    case 'smartai':
+      return ['smart_scripts', 'creature_template', 'gameobject_template'];
+    default:
+      return [];
+  }
+}
+
+async function getSchemaPromptSection(request: LlmChatRequest): Promise<string> {
+  const context = request.context;
+  const requestedTables = new Set<string>([
+    ...(context?.selectedTables ?? []),
+    ...getDefaultSchemaTables(context?.taskType ?? 'general'),
+  ]);
+
+  const entityTable = context?.currentEntityType ? ENTITY_TABLE_BY_TYPE[context.currentEntityType] : null;
+  if (entityTable) {
+    requestedTables.add(entityTable);
+  }
+  if (context?.currentTable) {
+    requestedTables.add(context.currentTable);
+  }
+
+  const tables = [...requestedTables].filter(Boolean);
+  if (!tables.length) {
+    return 'No live schema was requested for this prompt.';
+  }
+
+  const sections = await Promise.all(
+    tables.map(async (table) => {
+      try {
+        const schema = await dbService.getSchema(table);
+        const columns = schema.map((field) => `${field.name}:${field.type}${field.nullable ? ':nullable' : ''}`).join(', ');
+        return `- ${table}: ${columns}`;
+      } catch {
+        return `- ${table}: unavailable (database not connected or table not found)`;
+      }
+    })
+  );
+
+  return sections.join('\n');
+}
+
+async function buildAssistantSystemPrompt(request: LlmChatRequest): Promise<string> {
+  const context = request.context;
+  const schemaSection = await getSchemaPromptSection(request);
+  const currentEntityJson = context?.currentEntityData ? JSON.stringify(context.currentEntityData).slice(0, 4000) : 'none';
+  const currentSmartAiJson = context?.currentSmartAiRows ? JSON.stringify(context.currentSmartAiRows).slice(0, 4000) : 'none';
+
+  return [
+    'You are an AzerothCore-focused development assistant inside the WoW Admin desktop app.',
+    'Help admins and developers create safe, reviewable SOAP commands, SQL queries, item templates, and SmartAI scripts.',
+    'Use the supplied schema and current editor context. If schema is unavailable, state assumptions clearly.',
+    'When returning executable content, use these exact wrappers when relevant:',
+    '[SOAP]...[/SOAP] for a single SOAP command.',
+    '[SQL]...[/SQL] for SQL intended for the SQL editor.',
+    '[ENTITY_JSON]...[/ENTITY_JSON] for entity field updates as a JSON object keyed by DB column name.',
+    '[SMARTAI_JSON]...[/SMARTAI_JSON] for a JSON array of smart_scripts rows.',
+    'Keep explanations concise and place them outside wrapper blocks.',
+    'For SmartAI rows, include entryorguid, source_type, id, link, event_type, event_phase_mask, event_chance, event_flags, event_param1-4, action_type, action_param1-6, target_type, target_param1-3, target_x, target_y, target_z, target_o, and comment whenever possible.',
+    'For item creation, prefer item_template-compatible field names in ENTITY_JSON.',
+    '',
+    `Task type: ${context?.taskType ?? 'general'}`,
+    `Active database: ${context?.activeDatabase ?? 'unknown'}`,
+    `Current table: ${context?.currentTable ?? 'none'}`,
+    `Current entity type: ${context?.currentEntityType ?? 'none'}`,
+    `Current entity id: ${context?.currentEntityId ?? 'none'}`,
+    `Current entity data: ${currentEntityJson}`,
+    `Current SmartAI rows: ${currentSmartAiJson}`,
+    'Live schema:',
+    schemaSection,
+  ].join('\n');
 }
 
 function buildWowheadEntityUrl(entityType: string, id: string): string | null {
@@ -479,6 +579,80 @@ ipcMain.handle('update:openReleasePage', async (_event, url?: string): Promise<S
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
     return { success: false, message: `Failed to open release page: ${errorMessage}` };
+  }
+});
+
+ipcMain.handle('llm:chat', async (_event, request: LlmChatRequest): Promise<LlmChatResponse> => {
+  const { config, prompt } = request;
+  const endpointUrl = config?.endpointUrl?.trim() || '';
+  const apiKey = config?.apiKey?.trim() || '';
+  const model = config?.model?.trim() || '';
+
+  if (!prompt.trim()) {
+    return { success: false, message: 'Prompt is required.', content: '' };
+  }
+  if (!endpointUrl) {
+    return { success: false, message: 'LLM endpoint URL is required.', content: '' };
+  }
+  if (!apiKey) {
+    return { success: false, message: 'LLM API key is required.', content: '' };
+  }
+  if (!model) {
+    return { success: false, message: 'LLM model is required.', content: '' };
+  }
+
+  try {
+    const response = await fetch(normalizeLlmEndpointUrl(endpointUrl), {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model,
+        temperature: 0.2,
+        messages: [
+          {
+            role: 'system',
+            content: await buildAssistantSystemPrompt(request),
+          },
+          {
+            role: 'user',
+            content: prompt,
+          },
+        ],
+      }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`LLM request failed with ${response.status} ${response.statusText}: ${errorText}`);
+    }
+
+    const payload = (await response.json()) as {
+      choices?: Array<{ message?: { content?: string | Array<{ type?: string; text?: string }> } }>;
+      model?: string;
+    };
+
+    const rawContent = payload.choices?.[0]?.message?.content;
+    const content = Array.isArray(rawContent)
+      ? rawContent.map((part) => part.text || '').join('')
+      : rawContent || '';
+
+    return {
+      success: true,
+      message: 'Assistant response ready.',
+      content,
+      model: payload.model || model,
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return {
+      success: false,
+      message,
+      content: '',
+      model,
+    };
   }
 });
 

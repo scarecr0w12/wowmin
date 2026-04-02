@@ -2809,6 +2809,148 @@ tbody tr:hover { background: rgba(233,69,96,.05); }
   margin-top: 2px;
 }
 
+/* ── Assistant Tab ─────────────────────────────────────────── */
+.assistant-layout {
+  display: grid;
+  grid-template-columns: minmax(280px, 340px) minmax(0, 1fr);
+  gap: 16px;
+  padding: 16px;
+}
+.assistant-sidebar,
+.assistant-main {
+  min-height: 0;
+}
+.assistant-settings {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.assistant-settings label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.assistant-context-summary {
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: rgba(255,255,255,0.03);
+  color: var(--text);
+  font-size: 12px;
+  line-height: 1.5;
+}
+.assistant-main {
+  display: flex;
+  flex-direction: column;
+}
+.assistant-subtitle {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+.assistant-thread {
+  flex: 1;
+  min-height: 320px;
+  max-height: 60vh;
+  overflow: auto;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  background: var(--bg-panel);
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+}
+.assistant-message {
+  padding: 12px 14px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: rgba(255,255,255,0.03);
+  line-height: 1.5;
+}
+.assistant-message-user {
+  align-self: flex-end;
+  max-width: 80%;
+  background: rgba(201,169,110,0.12);
+  border-color: rgba(201,169,110,0.35);
+}
+.assistant-message-system {
+  color: var(--text-muted);
+}
+.assistant-message-error {
+  border-color: rgba(231,76,60,0.45);
+  background: rgba(231,76,60,0.08);
+}
+.assistant-message pre {
+  white-space: pre-wrap;
+  word-break: break-word;
+  margin: 8px 0 0;
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+.assistant-blocks {
+  display: grid;
+  gap: 10px;
+  margin-top: 10px;
+}
+.assistant-block {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: rgba(0,0,0,0.18);
+  overflow: hidden;
+}
+.assistant-block-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  background: rgba(255,255,255,0.04);
+  color: var(--accent);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+.assistant-block-actions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.assistant-block-body {
+  padding: 10px;
+}
+.assistant-composer {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 16px;
+}
+.assistant-prompt {
+  width: 100%;
+  resize: vertical;
+  min-height: 120px;
+  background: var(--bg-input);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 12px;
+  font-family: var(--font-mono);
+  font-size: 13px;
+}
+.assistant-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+@media (max-width: 1100px) {
+  .assistant-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
 /* ── Table save notification ─────────────────────────────── */
 .save-notification {
   color: var(--green, #2ecc71);

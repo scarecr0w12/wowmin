@@ -2,7 +2,7 @@
 import { ts, escapeHtml, showResult, debounce, getMapName, getZoneName, CLASS_COLORS, RACE_ICONS, RACE_NAMES, CLASS_NAMES } from './utils/helpers';
 import { CONTINENT_BOUNDS, worldToCanvas } from './utils/map-coords';
 import { AppState, createInitialState, PlayerInfo } from './types/state';
-import type { ConnectionProfile, DbConfig, SoapConfig, UpdateCheckResult, EntityMediaPreviewResult, LogMonitorConfig, LogMonitorInspectionResult } from '../../src/types/electron';
+import type { ConnectionProfile, DbConfig, SoapConfig, UpdateCheckResult, EntityMediaPreviewResult, LogMonitorConfig, LogMonitorInspectionResult, LlmConfig, LlmTaskType, LlmChatContext, QueryResult } from '../../src/types/electron';
 
 // ── Application State ────────────────────────────────────────────────────
 const state: AppState = createInitialState();
@@ -64,11 +64,67 @@ const DEFAULT_LOG_MONITOR_PROFILE_CONFIG: LogMonitorConfig = {
   refreshIntervalSeconds: 5,
 };
 
+const DEFAULT_LLM_PROFILE_CONFIG: LlmConfig = {
+  endpointUrl: 'https://api.openai.com/v1',
+  apiKey: '',
+  model: 'gpt-4o-mini',
+};
+
+const SMARTAI_ROW_DEFAULTS: Record<string, unknown> = {
+  entryorguid: 0,
+  source_type: 0,
+  id: 0,
+  link: 0,
+  event_type: 0,
+  event_phase_mask: 0,
+  event_chance: 100,
+  event_flags: 0,
+  event_param1: 0,
+  event_param2: 0,
+  event_param3: 0,
+  event_param4: 0,
+  action_type: 0,
+  action_param1: 0,
+  action_param2: 0,
+  action_param3: 0,
+  action_param4: 0,
+  action_param5: 0,
+  action_param6: 0,
+  target_type: 0,
+  target_param1: 0,
+  target_param2: 0,
+  target_param3: 0,
+  target_x: 0,
+  target_y: 0,
+  target_z: 0,
+  target_o: 0,
+  comment: '',
+};
+
+const SMARTAI_SQL_COLUMNS = Object.keys(SMARTAI_ROW_DEFAULTS);
+
+type AssistantBlockType = 'SOAP' | 'SQL' | 'ENTITY_JSON' | 'SMARTAI_JSON';
+
+interface AssistantParsedBlock {
+  type: AssistantBlockType;
+  content: string;
+}
+
 // Profile elements
 const $profileSelect = $<HTMLSelectElement>('profile-select');
 const $btnSaveProfile = $<HTMLButtonElement>('btn-save-profile');
 const $btnUpdateProfile = $<HTMLButtonElement>('btn-update-profile');
 const $btnDeleteProfile = $<HTMLButtonElement>('btn-delete-profile');
+const $assistantEndpoint = $<HTMLInputElement>('assistant-endpoint');
+const $assistantApiKey = $<HTMLInputElement>('assistant-api-key');
+const $assistantModel = $<HTMLInputElement>('assistant-model');
+const $assistantTaskType = $<HTMLSelectElement>('assistant-task-type');
+const $assistantContextSummary = $<HTMLElement>('assistant-context-summary');
+const $assistantThread = $<HTMLElement>('assistant-thread');
+const $assistantPrompt = $<HTMLTextAreaElement>('assistant-prompt');
+const $assistantSendBtn = $<HTMLButtonElement>('assistant-send-btn');
+const $assistantClearBtn = $<HTMLButtonElement>('assistant-clear-btn');
+const $assistantStatus = $<HTMLElement>('assistant-status');
 
 // Log monitor elements
 const $logHost = $<HTMLInputElement>('log-host');
@@ -312,6 +368,14 @@ function getCurrentLogMonitorProfileConfig(): LogMonitorConfig {
   };
 }
 
+function getCurrentLlmProfileConfig(): LlmConfig {
+  return {
+    endpointUrl: $assistantEndpoint?.value.trim() || DEFAULT_LLM_PROFILE_CONFIG.endpointUrl,
+    apiKey: $assistantApiKey?.value.trim() || DEFAULT_LLM_PROFILE_CONFIG.apiKey,
+    model: $assistantModel?.value.trim() || DEFAULT_LLM_PROFILE_CONFIG.model,
+  };
+}
+
 function applySoapProfileConfig(config: Partial<SoapConfig> | undefined): void {
   const nextConfig = { ...DEFAULT_SOAP_PROFILE_CONFIG, ...config };
   if ($host) $host.value = nextConfig.host;
@@ -355,6 +419,13 @@ function applyLogMonitorProfileConfig(config: Partial<LogMonitorConfig> | undefi
   if ($logFollowEnabled) $logFollowEnabled.checked = nextConfig.liveFollow;
   if ($logRefreshInterval) $logRefreshInterval.value = String(nextConfig.refreshIntervalSeconds);
   updateLogFollowControls();
+}
+
+function applyLlmProfileConfig(config: Partial<LlmConfig> | undefined): void {
+  const nextConfig = { ...DEFAULT_LLM_PROFILE_CONFIG, ...config };
+  if ($assistantEndpoint) $assistantEndpoint.value = nextConfig.endpointUrl;
+  if ($assistantApiKey) $assistantApiKey.value = nextConfig.apiKey;
+  if ($assistantModel) $assistantModel.value = nextConfig.model;
 }
 
 function stopLogFollowLoop(): void {
@@ -469,18 +540,18 @@ async function refreshUpdateStatus(force = false): Promise<void> {
 }
 
 // ── Tab Switching ──────────────────────────────────────────────────────────
+function switchMainTab(tabId: string): void {
+  $$<HTMLButtonElement>('#tab-bar .tab').forEach((t) => t.classList.toggle('active', t.dataset.tab === tabId));
+  $$<HTMLElement>('.tab-content').forEach((c) => c.classList.toggle('active', c.id === `tab-${tabId}`));
+  syncLogFollowPolling();
+}
+
 $$<HTMLButtonElement>('#tab-bar .tab').forEach((btn) => {
   btn.addEventListener('click', () => {
-    $$<HTMLButtonElement>('#tab-bar .tab').forEach((t) => t.classList.remove('active'));
-    $$<HTMLElement>('.tab-content').forEach((c) => c.classList.remove('active'));
-    btn.classList.add('active');
     const tabId = btn.dataset.tab;
     if (tabId) {
-      const tabContent = $(`tab-${tabId}`);
-      tabContent?.classList.add('active');
+      switchMainTab(tabId);
     }
-
-    syncLogFollowPolling();
   });
 });
 
@@ -1286,7 +1357,9 @@ function loadProfileConfig(profile: ConnectionProfile): void {
   applyDatabaseProfileConfig(profile.databaseConfig);
   applyMapDatabaseProfileConfig(profile.mapDatabaseConfig);
   applyLogMonitorProfileConfig(profile.logMonitorConfig);
+  applyLlmProfileConfig(profile.llmConfig);
   resetLogMonitorView('Loaded profile settings. Run a fresh log scan to inspect this server.');
+  renderAssistantContextSummary();
 }
 
 $profileSelect?.addEventListener('change', async () => {
@@ -1319,6 +1392,7 @@ $btnSaveProfile?.addEventListener('click', async () => {
     databaseConfig: getCurrentDatabaseProfileConfig(),
     mapDatabaseConfig: getCurrentMapDatabaseProfileConfig(),
     logMonitorConfig: getCurrentLogMonitorProfileConfig(),
+    llmConfig: getCurrentLlmProfileConfig(),
   });
   
   state.profiles.push(profile);
@@ -1337,6 +1411,7 @@ $btnUpdateProfile?.addEventListener('click', async () => {
     databaseConfig: getCurrentDatabaseProfileConfig(),
     mapDatabaseConfig: getCurrentMapDatabaseProfileConfig(),
     logMonitorConfig: getCurrentLogMonitorProfileConfig(),
+    llmConfig: getCurrentLlmProfileConfig(),
   });
 
   if (!updatedProfile) return;
@@ -1368,6 +1443,303 @@ $btnDeleteProfile?.addEventListener('click', async () => {
 
 // Load profiles on startup
 loadProfiles();
+
+function cloneJson<T>(value: T): T {
+  return JSON.parse(JSON.stringify(value)) as T;
+}
+
+function normalizeSmartAiRow(row: Record<string, unknown>, entryorguid?: unknown, sourceType?: unknown): Record<string, unknown> {
+  const normalized: Record<string, unknown> = {
+    ...SMARTAI_ROW_DEFAULTS,
+    ...row,
+  };
+
+  normalized.entryorguid = row.entryorguid ?? entryorguid ?? SMARTAI_ROW_DEFAULTS.entryorguid;
+  normalized.source_type = row.source_type ?? sourceType ?? SMARTAI_ROW_DEFAULTS.source_type;
+
+  SMARTAI_SQL_COLUMNS.forEach((column) => {
+    if (column === 'comment') {
+      normalized[column] = String(normalized[column] ?? '');
+      return;
+    }
+
+    const parsed = Number(normalized[column]);
+    normalized[column] = Number.isFinite(parsed) ? parsed : Number(SMARTAI_ROW_DEFAULTS[column] ?? 0);
+  });
+
+  return normalized;
+}
+
+function getCurrentSmartAiRows(): Record<string, unknown>[] {
+  if (!dbState.entityCurrentData || !Array.isArray(dbState.entityCurrentData._sai_rows)) {
+    return [];
+  }
+
+  return dbState.entityCurrentData._sai_rows as Record<string, unknown>[];
+}
+
+function setCurrentSmartAiRows(rows: Record<string, unknown>[]): void {
+  if (!dbState.entityCurrentData) return;
+  dbState.entityCurrentData._sai_rows = rows;
+}
+
+function entryorguidFromRows(rows: Record<string, unknown>[]): unknown {
+  return rows[0]?.entryorguid ?? dbState.entityCurrentData?.entryorguid ?? 0;
+}
+
+function sourceTypeFromRows(rows: Record<string, unknown>[]): unknown {
+  return rows[0]?.source_type ?? dbState.entityCurrentData?.source_type ?? 0;
+}
+
+function refreshEntityDirtyIndicators(): void {
+  if (!$entityEditorContent || !dbState.entityCurrentData) return;
+
+  $entityEditorContent.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>('input[data-field], textarea[data-field]').forEach((element) => {
+    const field = element.dataset.field;
+    if (!field) return;
+    const currentValue = dbState.entityCurrentData?.[field] ?? null;
+    const originalValue = dbState.entityOriginalData?.[field] ?? null;
+    const isDirty = String(currentValue ?? '') !== String(originalValue ?? '');
+    element.classList.toggle('is-dirty', isDirty);
+    element.closest('.entity-field')?.classList.toggle('entity-field-dirty', isDirty);
+  });
+}
+
+function getAssistantContext(): LlmChatContext {
+  const taskType = ($assistantTaskType?.value || 'general') as LlmTaskType;
+  const currentEntityType = $entityType?.value || null;
+  const currentEntityId = $entityId?.value || null;
+  const selectedTables = new Set<string>();
+
+  if (dbState.currentTable) selectedTables.add(dbState.currentTable);
+  if (currentEntityType && ENTITY_TABLES[currentEntityType]) selectedTables.add(ENTITY_TABLES[currentEntityType].table);
+  if (taskType === 'item') selectedTables.add('item_template');
+  if (taskType === 'smartai') selectedTables.add('smart_scripts');
+
+  return {
+    taskType,
+    activeDatabase: dbState.database,
+    currentTable: dbState.currentTable,
+    currentEntityType,
+    currentEntityId,
+    selectedTables: [...selectedTables],
+    currentEntityData: dbState.entityCurrentData ? cloneJson(dbState.entityCurrentData) : null,
+    currentSmartAiRows: getCurrentSmartAiRows().length ? cloneJson(getCurrentSmartAiRows()) : null,
+  };
+}
+
+function renderAssistantContextSummary(): void {
+  if (!$assistantContextSummary) return;
+  const context = getAssistantContext();
+  const parts = [
+    `DB: ${context.activeDatabase ?? 'not connected'}`,
+    `Table: ${context.currentTable ?? 'none'}`,
+    `Entity: ${context.currentEntityType ?? 'none'}${context.currentEntityId ? ` #${context.currentEntityId}` : ''}`,
+    `Task: ${context.taskType}`,
+  ];
+  $assistantContextSummary.textContent = `Context: ${parts.join(' • ')}`;
+}
+
+function parseAssistantBlocks(content: string): AssistantParsedBlock[] {
+  const regex = /\[(SOAP|SQL|ENTITY_JSON|SMARTAI_JSON)\]([\s\S]*?)\[\/\1\]/g;
+  const blocks: AssistantParsedBlock[] = [];
+  let match: RegExpExecArray | null;
+
+  while ((match = regex.exec(content)) !== null) {
+    blocks.push({
+      type: match[1] as AssistantBlockType,
+      content: match[2].trim(),
+    });
+  }
+
+  return blocks;
+}
+
+function getAssistantNarrative(content: string): string {
+  return content.replace(/\[(SOAP|SQL|ENTITY_JSON|SMARTAI_JSON)\][\s\S]*?\[\/\1\]/g, '').trim();
+}
+
+function appendAssistantMessage(html: string, variant = ''): HTMLElement | null {
+  if (!$assistantThread) return null;
+  const message = document.createElement('div');
+  message.className = `assistant-message${variant ? ` ${variant}` : ''}`;
+  message.innerHTML = html;
+  $assistantThread.appendChild(message);
+  $assistantThread.scrollTop = $assistantThread.scrollHeight;
+  return message;
+}
+
+function buildAssistantBlockActions(blockType: AssistantBlockType): string {
+  const applyLabel = blockType === 'SOAP'
+    ? 'Apply to Console'
+    : blockType === 'SQL'
+      ? 'Apply to SQL Editor'
+      : blockType === 'ENTITY_JSON'
+        ? 'Apply to Entity Editor'
+        : 'Apply to SmartAI';
+
+  return `<div class="assistant-block-actions"><button class="btn-wow text-xs px-2 py-1" data-assistant-apply="${blockType}">${applyLabel}</button><button class="btn-wow text-xs px-2 py-1" data-assistant-copy="${blockType}">Copy</button></div>`;
+}
+
+function renderAssistantResponse(content: string): void {
+  const narrative = getAssistantNarrative(content);
+  const blocks = parseAssistantBlocks(content);
+  const narrativeHtml = narrative ? `<div>${escapeHtml(narrative).replace(/\n/g, '<br/>')}</div>` : '';
+  const blocksHtml = blocks.length
+    ? `<div class="assistant-blocks">${blocks.map((block) => `<section class="assistant-block" data-assistant-block="${block.type}"><div class="assistant-block-header"><span>${block.type.replace('_', ' ')}</span>${buildAssistantBlockActions(block.type)}</div><div class="assistant-block-body"><pre>${escapeHtml(block.content)}</pre></div></section>`).join('')}</div>`
+    : `<pre>${escapeHtml(content)}</pre>`;
+
+  const message = appendAssistantMessage(`${narrativeHtml}${blocksHtml}`);
+  if (!message) return;
+
+  blocks.forEach((block) => {
+    message.querySelector<HTMLButtonElement>(`[data-assistant-copy="${block.type}"]`)?.addEventListener('click', () => {
+      void navigator.clipboard.writeText(block.content);
+    });
+    message.querySelector<HTMLButtonElement>(`[data-assistant-apply="${block.type}"]`)?.addEventListener('click', () => {
+      void applyAssistantBlock(block);
+    });
+  });
+}
+
+async function ensureEntityEditorReady(entityType: string): Promise<{ table: string; primaryKey: string; nameField: string } | null> {
+  const cfg = ENTITY_TABLES[entityType];
+  if (!cfg || !$entityType) return null;
+  $entityType.value = entityType;
+  switchMainTab('database');
+  switchDbSubtab('db-entity-editor');
+  renderAssistantContextSummary();
+  return cfg;
+}
+
+async function applyEntityJsonToEditor(payload: string): Promise<void> {
+  const data = JSON.parse(payload) as Record<string, unknown>;
+  const entityType = $entityType?.value || ($assistantTaskType?.value === 'item' ? 'item' : 'creature');
+  const cfg = await ensureEntityEditorReady(entityType);
+  if (!cfg) return;
+
+  const hasExistingEntity = Boolean(dbState.entityCurrentData && $entityType?.value === entityType);
+  const existingOriginal = hasExistingEntity && dbState.entityOriginalData ? cloneJson(dbState.entityOriginalData) : null;
+  let baseEntity: Record<string, unknown>;
+
+  if (hasExistingEntity && dbState.entityCurrentData) {
+    baseEntity = cloneJson(dbState.entityCurrentData);
+  } else {
+    const schema = await window.electronAPI.db.getSchema(cfg.table);
+    baseEntity = {};
+    schema.forEach((field) => {
+      baseEntity[field.name] = null;
+    });
+    dbState.entityIsNew = true;
+  }
+
+  const mergedEntity = { ...baseEntity, ...data };
+  if ($entityId && mergedEntity[cfg.primaryKey] !== undefined && mergedEntity[cfg.primaryKey] !== null) {
+    $entityId.value = String(mergedEntity[cfg.primaryKey]);
+  }
+
+  renderEntityEditor(mergedEntity, cfg);
+
+  if (hasExistingEntity && existingOriginal) {
+    dbState.entityOriginalData = existingOriginal;
+    dbState.entityCurrentData = cloneJson(mergedEntity);
+    dbState.entityIsNew = false;
+    refreshEntityDirtyIndicators();
+    updateSQLPanel();
+  }
+
+  if ($entitySaveBtn) $entitySaveBtn.disabled = false;
+  if ($entityApplySqlBtn) $entityApplySqlBtn.disabled = false;
+}
+
+async function applySmartAiJsonToEditor(payload: string): Promise<void> {
+  const parsed = JSON.parse(payload) as Record<string, unknown>[];
+  const rows = parsed.map((row) => normalizeSmartAiRow(row));
+  const entryorguid = rows[0]?.entryorguid ?? Number($entityId?.value || '0');
+  const sourceType = rows[0]?.source_type ?? 0;
+  const cfg = await ensureEntityEditorReady('smartai');
+  if (!cfg) return;
+
+  if ($entityId) $entityId.value = String(entryorguid);
+  dbState.entityIsNew = false;
+  renderEntityEditor({ entryorguid, source_type: sourceType, _sai_rows: rows }, cfg);
+  if ($entitySaveBtn) $entitySaveBtn.disabled = false;
+  if ($entityApplySqlBtn) $entityApplySqlBtn.disabled = false;
+}
+
+async function applyAssistantBlock(block: AssistantParsedBlock): Promise<void> {
+  if (block.type === 'SOAP') {
+    switchMainTab('console');
+    if ($cmdInput) {
+      $cmdInput.value = block.content;
+      $cmdInput.focus();
+    }
+    return;
+  }
+
+  if (block.type === 'SQL') {
+    switchMainTab('database');
+    switchDbSubtab('db-sql-editor');
+    updateSqlEditorValue(block.content);
+    return;
+  }
+
+  if (block.type === 'ENTITY_JSON') {
+    await applyEntityJsonToEditor(block.content);
+    return;
+  }
+
+  if (block.type === 'SMARTAI_JSON') {
+    await applySmartAiJsonToEditor(block.content);
+  }
+}
+
+async function sendAssistantPrompt(): Promise<void> {
+  const prompt = $assistantPrompt?.value.trim() || '';
+  if (!prompt) return;
+
+  renderAssistantContextSummary();
+  appendAssistantMessage(escapeHtml(prompt).replace(/\n/g, '<br/>'), 'assistant-message-user');
+  if ($assistantPrompt) $assistantPrompt.value = '';
+  if ($assistantSendBtn) $assistantSendBtn.disabled = true;
+  if ($assistantStatus) $assistantStatus.textContent = 'Sending…';
+
+  const response = await window.electronAPI.llm.chat({
+    config: getCurrentLlmProfileConfig(),
+    prompt,
+    context: getAssistantContext(),
+  });
+
+  if ($assistantSendBtn) $assistantSendBtn.disabled = false;
+  if ($assistantStatus) $assistantStatus.textContent = response.success ? `Ready${response.model ? ` • ${response.model}` : ''}` : 'Error';
+
+  if (!response.success) {
+    appendAssistantMessage(escapeHtml(response.message), 'assistant-message-error');
+    return;
+  }
+
+  renderAssistantResponse(response.content);
+}
+
+$assistantSendBtn?.addEventListener('click', () => {
+  void sendAssistantPrompt();
+});
+
+$assistantClearBtn?.addEventListener('click', () => {
+  if ($assistantThread) $assistantThread.innerHTML = '';
+  if ($assistantStatus) $assistantStatus.textContent = 'Idle';
+});
+
+$assistantPrompt?.addEventListener('keydown', (event) => {
+  if (event.key === 'Enter' && !event.shiftKey) {
+    event.preventDefault();
+    void sendAssistantPrompt();
+  }
+});
+
+$assistantTaskType?.addEventListener('change', () => {
+  renderAssistantContextSummary();
+});
 
 // ═══════════════════════════════════════════════════════════════════════════
 // LOG MONITOR TAB
@@ -2146,6 +2518,119 @@ function updateSqlGutter(): void {
   $sqlGutter.innerHTML = html;
 }
 
+function updateSqlEditorValue(sql: string): void {
+  if (!$sqlEditor) return;
+  $sqlEditor.value = sql;
+  updateSqlGutter();
+  $sqlEditor.focus();
+  $sqlEditor.setSelectionRange(sql.length, sql.length);
+}
+
+function isSelectLikeStatement(sql: string): boolean {
+  const normalized = sql.trim().toUpperCase();
+  return normalized.startsWith('SELECT')
+    || normalized.startsWith('SHOW')
+    || normalized.startsWith('DESCRIBE')
+    || normalized.startsWith('EXPLAIN');
+}
+
+function splitSqlStatements(sql: string): string[] {
+  const statements: string[] = [];
+  let current = '';
+  let inSingleQuote = false;
+  let inDoubleQuote = false;
+  let inBacktick = false;
+  let inLineComment = false;
+  let inBlockComment = false;
+
+  for (let i = 0; i < sql.length; i += 1) {
+    const char = sql[i];
+    const next = sql[i + 1];
+
+    if (inLineComment) {
+      current += char;
+      if (char === '\n') inLineComment = false;
+      continue;
+    }
+
+    if (inBlockComment) {
+      current += char;
+      if (char === '*' && next === '/') {
+        current += next;
+        i += 1;
+        inBlockComment = false;
+      }
+      continue;
+    }
+
+    if (!inSingleQuote && !inDoubleQuote && !inBacktick) {
+      if (char === '-' && next === '-') {
+        inLineComment = true;
+        current += char;
+        continue;
+      }
+      if (char === '/' && next === '*') {
+        inBlockComment = true;
+        current += char;
+        continue;
+      }
+    }
+
+    if (char === '\'' && !inDoubleQuote && !inBacktick) {
+      const escaped = sql[i - 1] === '\\' || next === '\'';
+      current += char;
+      if (!escaped) {
+        inSingleQuote = !inSingleQuote;
+      } else if (next === '\'') {
+        current += next;
+        i += 1;
+      }
+      continue;
+    }
+
+    if (char === '"' && !inSingleQuote && !inBacktick) {
+      const escaped = sql[i - 1] === '\\';
+      current += char;
+      if (!escaped) inDoubleQuote = !inDoubleQuote;
+      continue;
+    }
+
+    if (char === '`' && !inSingleQuote && !inDoubleQuote) {
+      inBacktick = !inBacktick;
+      current += char;
+      continue;
+    }
+
+    if (char === ';' && !inSingleQuote && !inDoubleQuote && !inBacktick) {
+      const trimmed = current.trim();
+      if (trimmed) statements.push(trimmed);
+      current = '';
+      continue;
+    }
+
+    current += char;
+  }
+
+  const trailing = current.trim();
+  if (trailing) statements.push(trailing);
+  return statements;
+}
+
+async function runSqlStatements(sql: string): Promise<{ statements: string[]; results: QueryResult[] }> {
+  const statements = splitSqlStatements(sql);
+  const results: QueryResult[] = [];
+
+  for (const statement of statements) {
+    if (isSelectLikeStatement(statement)) {
+      results.push(await window.electronAPI.db.query(statement));
+    } else {
+      results.push(await window.electronAPI.db.execute(statement));
+    }
+  }
+
+  return { statements, results };
+}
+
 $sqlEditor?.addEventListener('input', updateSqlGutter);
 $sqlEditor?.addEventListener('scroll', () => {
   if ($sqlGutter) {
@@ -2174,23 +2659,12 @@ async function executeSqlQuery(sql: string): Promise<void> {
   try {
     $sqlResultInfo!.textContent = 'Executing...';
     $sqlResults!.innerHTML = '<p class="text-dark-text-muted text-sm p-4">Loading...</p>';
-    
-    // Determine if it's a SELECT query
-    const isSelect = sql.toUpperCase().startsWith('SELECT') || 
-                     sql.toUpperCase().startsWith('SHOW') || 
-                     sql.toUpperCase().startsWith('DESCRIBE') ||
-                     sql.toUpperCase().startsWith('EXPLAIN');
-    
+
     const startTime = Date.now();
-    let result;
-    
-    if (isSelect) {
-      result = await window.electronAPI.db.query(sql);
-    } else {
-      result = await window.electronAPI.db.execute(sql);
-    }
-    
+    const { statements, results } = await runSqlStatements(sql);
     const duration = Date.now() - startTime;
+    const result = results[results.length - 1] ?? { rows: [], fields: [] };
+    const affectedRows = results.reduce((sum, entry) => sum + (entry.affectedRows ?? 0), 0);
     
     // Add to history
     dbState.queryHistory.unshift({
@@ -2205,15 +2679,15 @@ async function executeSqlQuery(sql: string): Promise<void> {
     
     // Display results
     if (result.rows && result.rows.length > 0) {
-      $sqlResultInfo!.textContent = `${result.rows.length} rows in ${duration}ms`;
+      $sqlResultInfo!.textContent = `${result.rows.length} rows in ${duration}ms${statements.length > 1 ? ` • ${statements.length} statements` : ''}`;
       renderQueryResults(result.rows);
       $sqlExportBtn!.disabled = false;
-    } else if (result.affectedRows !== undefined) {
-      $sqlResultInfo!.textContent = `${result.affectedRows} rows affected in ${duration}ms`;
-      $sqlResults!.innerHTML = `<p class="text-wow-green text-sm p-4">Query executed successfully. ${result.affectedRows} rows affected.</p>`;
+    } else if (affectedRows > 0 || result.affectedRows !== undefined) {
+      $sqlResultInfo!.textContent = `${affectedRows} rows affected in ${duration}ms${statements.length > 1 ? ` • ${statements.length} statements` : ''}`;
+      $sqlResults!.innerHTML = `<p class="text-wow-green text-sm p-4">Query executed successfully. ${affectedRows} rows affected${statements.length > 1 ? ` across ${statements.length} statements` : ''}.</p>`;
       $sqlExportBtn!.disabled = true;
     } else {
-      $sqlResultInfo!.textContent = `Empty result set (${duration}ms)`;
+      $sqlResultInfo!.textContent = `Empty result set (${duration}ms)${statements.length > 1 ? ` • ${statements.length} statements` : ''}`;
       $sqlResults!.innerHTML = '<p class="text-dark-text-muted text-sm p-4">No results</p>';
       $sqlExportBtn!.disabled = true;
     }
@@ -3409,6 +3883,41 @@ function generateEntitySQL(mode: 'diff' | 'full'): string {
     return `'${s.replace(/\\/g,'\\\\').replace(/'/g,"''")}'`;
   };
 
+  if (entityType === 'smartai') {
+    const currentRows = getCurrentSmartAiRows().map((row) => normalizeSmartAiRow(row));
+    const originalRows = Array.isArray(original?._sai_rows)
+      ? (original._sai_rows as Record<string, unknown>[]).map((row) => normalizeSmartAiRow(row))
+      : [];
+
+    const currentSignature = JSON.stringify(currentRows);
+    const originalSignature = JSON.stringify(originalRows);
+    if (mode === 'diff' && !dbState.entityIsNew && currentSignature === originalSignature) {
+      return '-- No changes detected';
+    }
+
+    const entryorguid = entryorguidFromRows(currentRows.length ? currentRows : originalRows);
+    const sourceType = sourceTypeFromRows(currentRows.length ? currentRows : originalRows);
+    if (entryorguid === undefined || entryorguid === null) {
+      return '-- No SmartAI entry selected';
+    }
+
+    const statements = [
+      `DELETE FROM \`${table}\` WHERE \`entryorguid\` = ${sqlVal(entryorguid)} AND \`source_type\` = ${sqlVal(sourceType)};`,
+    ];
+
+    if (!currentRows.length) {
+      return statements.join('\n');
+    }
+
+    const cols = SMARTAI_SQL_COLUMNS.map((column) => `\`${column}\``).join(', ');
+    const valueSql = currentRows
+      .map((row) => `(${SMARTAI_SQL_COLUMNS.map((column) => sqlVal(row[column])).join(', ')})`)
+      .join(',\n');
+
+    statements.push(`INSERT INTO \`${table}\` (${cols}) VALUES\n${valueSql};`);
+    return statements.join('\n\n');
+  }
+
   if (dbState.entityIsNew || mode === 'full') {
     const cols = Object.keys(current).map(k => `\`${k}\``).join(', ');
     const vals = Object.values(current).map(sqlVal).join(',\n  ');
@@ -3456,7 +3965,7 @@ $entityApplySqlBtn?.addEventListener('click', async () => {
   if (!sql || sql.startsWith('--') || !dbState.connected) return;
   try {
     $entityApplySqlBtn!.disabled = true;
-    await window.electronAPI.db.execute(sql);
+    await runSqlStatements(sql);
     const orig = $entityApplySqlBtn!.textContent;
     $entityApplySqlBtn!.textContent = '✓ Applied!';
     setTimeout(() => {
@@ -3465,7 +3974,7 @@ $entityApplySqlBtn?.addEventListener('click', async () => {
     }, 2000);
     // Refresh original data
     if (dbState.entityCurrentData) {
-      dbState.entityOriginalData = { ...dbState.entityCurrentData };
+      dbState.entityOriginalData = cloneJson(dbState.entityCurrentData);
       updateSQLPanel();
       $entityEditorContent?.querySelectorAll('.entity-field-dirty').forEach((el) => el.classList.remove('entity-field-dirty'));
       $entityEditorContent?.querySelectorAll('.is-dirty').forEach((el) => el.classList.remove('is-dirty'));
@@ -3753,7 +4262,18 @@ function renderSAIEditor(entity: Record<string, unknown>, _config: { primaryKey:
     </tr>`;
   };
 
-  const entryRows: Record<string, unknown>[] = [entity];
+  const entryRows: Record<string, unknown>[] = Array.isArray(entity._sai_rows)
+    ? (entity._sai_rows as Record<string, unknown>[]).map((row) => normalizeSmartAiRow(row, entryorguid, sourceType))
+    : [normalizeSmartAiRow(entity, entryorguid, sourceType)];
+
+  dbState.entityCurrentData = {
+    entryorguid,
+    source_type: sourceType,
+    _sai_rows: cloneJson(entryRows),
+  };
+  if (!dbState.entityOriginalData || !Array.isArray(dbState.entityOriginalData._sai_rows)) {
+    dbState.entityOriginalData = cloneJson(dbState.entityCurrentData);
+  }
 
   const buildTable = (): string => `
     <div class="sai-toolbar">
@@ -3787,9 +4307,9 @@ function renderSAIEditor(entity: Record<string, unknown>, _config: { primaryKey:
         `SELECT * FROM \`smart_scripts\` WHERE \`entryorguid\` = ? AND \`source_type\` = ? ORDER BY \`id\``,
         [entryorguid, sourceType]
       );
-      const rows = res.rows as Record<string, unknown>[];
-      dbState.entityCurrentData = { entryorguid, source_type: sourceType, _sai_rows: rows } as unknown as Record<string, unknown>;
-      dbState.entityOriginalData = JSON.parse(JSON.stringify(dbState.entityCurrentData));
+      const rows = (res.rows as Record<string, unknown>[]).map((row) => normalizeSmartAiRow(row, entryorguid, sourceType));
+      dbState.entityCurrentData = { entryorguid, source_type: sourceType, _sai_rows: cloneJson(rows) } as Record<string, unknown>;
+      dbState.entityOriginalData = cloneJson(dbState.entityCurrentData);
       tbody.innerHTML = rows.map((r, i) => makeRow(r, i)).join('');
       wireSAIHandlers(tbody, rows);
       updateSQLPanel();
@@ -3810,83 +4330,156 @@ function renderSAIEditor(entity: Record<string, unknown>, _config: { primaryKey:
       target_x: 0, target_y: 0, target_z: 0, target_o: 0,
       comment: '',
     };
-    const idx = tbody.querySelectorAll('tr').length;
+    const rows = [...getCurrentSmartAiRows(), normalizeSmartAiRow(emptyRow, entryorguid, sourceType)];
+    setCurrentSmartAiRows(rows);
+    const idx = rows.length - 1;
     tbody.insertAdjacentHTML('beforeend', makeRow(emptyRow, idx));
     const saveBtn = document.getElementById('sai-save-all-btn') as HTMLButtonElement;
     if (saveBtn) saveBtn.disabled = false;
+    updateSQLPanel();
   });
 
   wireSAIHandlers(tbody, entryRows);
 }
 
-function wireSAIHandlers(tbody: HTMLElement, _rows: Record<string, unknown>[]): void {
-  const saveBtn = document.getElementById('sai-save-all-btn') as HTMLButtonElement;
+async function saveCurrentSmartAiRows(saveBtn?: HTMLButtonElement | null): Promise<void> {
+  if (!dbState.connected) return;
 
-  // Delete row
-  tbody.querySelectorAll<HTMLButtonElement>('.sai-del-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-      btn.closest('tr')?.remove();
-      if (saveBtn) saveBtn.disabled = false;
-    });
-  });
+  const rows = getCurrentSmartAiRows().map((row) => normalizeSmartAiRow(row));
+  const entryorguid = entryorguidFromRows(rows);
+  const sourceType = sourceTypeFromRows(rows);
 
-  // Track changes — update badge on type selects
-  tbody.querySelectorAll<HTMLSelectElement>('.sai-et, .sai-at, .sai-tt').forEach(sel => {
-    sel.addEventListener('change', () => {
-      const badge = sel.nextElementSibling as HTMLElement;
-      const val = parseInt(sel.value);
-      const isEvent = sel.classList.contains('sai-et');
-      const isAction = sel.classList.contains('sai-at');
-      const map = isEvent ? SAI_EVENT : isAction ? SAI_ACTION : SAI_TARGET;
-      if (badge) badge.textContent = map[val] || `ID:${val}`;
-      if (saveBtn) saveBtn.disabled = false;
-    });
-  });
-
-  tbody.querySelectorAll<HTMLInputElement>('input').forEach(inp => {
-    inp.addEventListener('input', () => { if (saveBtn) saveBtn.disabled = false; });
-  });
-
-  // Save all SAI rows
-  saveBtn?.addEventListener('click', async () => {
-    if (!dbState.connected) return;
-    try {
+  try {
+    if (saveBtn) {
       saveBtn.disabled = true;
       saveBtn.textContent = 'Saving...';
+    }
 
-      const rows: Record<string, unknown>[] = [];
-      tbody.querySelectorAll<HTMLTableRowElement>('tr').forEach(tr => {
-        const row: Record<string, unknown> = {};
-        tr.querySelectorAll<HTMLInputElement>('input[data-col]').forEach(inp => {
-          row[inp.dataset.col!] = inp.value === '' ? null : inp.value;
-        });
-        tr.querySelectorAll<HTMLSelectElement>('select[data-col]').forEach(sel => {
-          row[sel.dataset.col!] = sel.value;
-        });
-        if (Object.keys(row).length) rows.push(row);
-      });
+    await window.electronAPI.db.execute(
+      'DELETE FROM `smart_scripts` WHERE `entryorguid` = ? AND `source_type` = ?',
+      [entryorguid, sourceType],
+    );
 
-      // Replace all rows: DELETE + INSERT
-      const sampleRow = rows[0];
-      const entryorguid = sampleRow?.['entryorguid'];
-      const sourceType  = sampleRow?.['source_type'] ?? 0;
-      await window.electronAPI.db.execute(`DELETE FROM \`smart_scripts\` WHERE \`entryorguid\` = ? AND \`source_type\` = ?`, [entryorguid, sourceType]);
+    for (const row of rows) {
+      const normalizedRow = normalizeSmartAiRow(row, entryorguid, sourceType);
+      const cols = SMARTAI_SQL_COLUMNS.map((column) => `\`${column}\``).join(', ');
+      const vals = SMARTAI_SQL_COLUMNS.map(() => '?').join(', ');
+      await window.electronAPI.db.execute(
+        `INSERT INTO \`smart_scripts\` (${cols}) VALUES (${vals})`,
+        SMARTAI_SQL_COLUMNS.map((column) => normalizedRow[column]),
+      );
+    }
 
-      for (const r of rows) {
-        const cols = Object.keys(r).map(k => `\`${k}\``).join(', ');
-        const vals = Object.keys(r).map(() => '?').join(', ');
-        await window.electronAPI.db.execute(`INSERT INTO \`smart_scripts\` (${cols}) VALUES (${vals})`, Object.values(r));
-      }
+    if (dbState.entityCurrentData) {
+      dbState.entityCurrentData = {
+        ...dbState.entityCurrentData,
+        entryorguid,
+        source_type: sourceType,
+        _sai_rows: cloneJson(rows),
+      };
+      dbState.entityOriginalData = cloneJson(dbState.entityCurrentData);
+    }
 
+    updateSQLPanel();
+    updateEntityPreview();
+    void loadEntityRelations();
+
+    if (saveBtn) {
       saveBtn.textContent = '✓ Saved';
-      setTimeout(() => { saveBtn.textContent = 'Save All'; saveBtn.disabled = false; }, 2000);
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      alert(`SAI Save Error: ${msg}`);
+      setTimeout(() => {
+        saveBtn.textContent = 'Save All';
+        saveBtn.disabled = false;
+      }, 2000);
+    }
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    alert(`SAI Save Error: ${msg}`);
+    if (saveBtn) {
       saveBtn.textContent = 'Save All';
       saveBtn.disabled = false;
     }
-  });
+    throw err;
+  }
+}
+
+function wireSAIHandlers(tbody: HTMLElement, _rows: Record<string, unknown>[]): void {
+  const saveBtn = document.getElementById('sai-save-all-btn') as HTMLButtonElement;
+
+  const syncRowFromElement = (element: HTMLInputElement | HTMLSelectElement): void => {
+    const rowIndex = Number(element.dataset.row ?? '-1');
+    const column = element.dataset.col;
+    if (!column || rowIndex < 0) return;
+
+    const rows = [...getCurrentSmartAiRows()];
+    if (!rows[rowIndex]) return;
+
+    const nextRow = normalizeSmartAiRow({
+      ...rows[rowIndex],
+      [column]: element.value,
+    });
+
+    rows[rowIndex] = nextRow;
+    setCurrentSmartAiRows(rows);
+    if (saveBtn) saveBtn.disabled = false;
+    updateSQLPanel();
+  };
+
+  tbody.onclick = (event) => {
+    const deleteButton = (event.target as HTMLElement).closest<HTMLButtonElement>('.sai-del-btn');
+    if (!deleteButton) return;
+
+    const rowIndex = Number(deleteButton.dataset.delRow ?? '-1');
+    if (rowIndex < 0) return;
+
+    const rows = [...getCurrentSmartAiRows()];
+    rows.splice(rowIndex, 1);
+    setCurrentSmartAiRows(rows);
+
+    tbody.querySelectorAll<HTMLTableRowElement>('tr').forEach((row, index) => {
+      if (index === rowIndex) row.remove();
+    });
+
+    tbody.querySelectorAll<HTMLTableRowElement>('tr').forEach((row, index) => {
+      row.dataset.row = String(index);
+      row.querySelectorAll<HTMLInputElement | HTMLSelectElement>('[data-row]').forEach((field) => {
+        field.dataset.row = String(index);
+      });
+      row.querySelector<HTMLButtonElement>('.sai-del-btn')?.setAttribute('data-del-row', String(index));
+    });
+
+    if (saveBtn) saveBtn.disabled = false;
+    updateSQLPanel();
+  };
+
+  tbody.oninput = (event) => {
+    const element = event.target as HTMLInputElement | HTMLSelectElement | null;
+    if (!element?.matches('input[data-col], select[data-col]')) return;
+    syncRowFromElement(element);
+  };
+
+  tbody.onchange = (event) => {
+    const element = event.target as HTMLInputElement | HTMLSelectElement | null;
+    if (!element?.matches('select[data-col]')) return;
+
+    syncRowFromElement(element);
+
+    if (element.classList.contains('sai-et') || element.classList.contains('sai-at') || element.classList.contains('sai-tt')) {
+      const badge = element.nextElementSibling as HTMLElement | null;
+      const value = parseInt(element.value, 10);
+      const map = element.classList.contains('sai-et')
+        ? SAI_EVENT
+        : element.classList.contains('sai-at')
+          ? SAI_ACTION
+          : SAI_TARGET;
+      if (badge) badge.textContent = map[value] || `ID:${value}`;
+    }
+  };
+
+  if (saveBtn) {
+    saveBtn.onclick = () => {
+      void saveCurrentSmartAiRows(saveBtn);
+    };
+  }
 }
 
 // ── Load entity ─────────────────────────────────────────────────────────────
@@ -3900,6 +4493,42 @@ async function loadEntityById(): Promise<void> {
 
   dbState.entityIsNew = false;
   try {
+    if (entityType === 'smartai') {
+      const initialResult = await window.electronAPI.db.query(
+        'SELECT * FROM `smart_scripts` WHERE `entryorguid` = ? ORDER BY `source_type`, `id` LIMIT 1',
+        [entityId],
+      );
+
+      if (initialResult.rows && initialResult.rows.length > 0) {
+        const seedRow = initialResult.rows[0] as Record<string, unknown>;
+        const sourceType = Number(seedRow.source_type ?? 0);
+        const fullResult = await window.electronAPI.db.query(
+          'SELECT * FROM `smart_scripts` WHERE `entryorguid` = ? AND `source_type` = ? ORDER BY `id`',
+          [entityId, sourceType],
+        );
+
+        renderEntityEditor({
+          entryorguid: Number(entityId),
+          source_type: sourceType,
+          _sai_rows: fullResult.rows as Record<string, unknown>[],
+        }, cfg);
+        $entitySaveBtn!.disabled = false;
+        $entityDeleteBtn!.disabled = false;
+        if ($entityApplySqlBtn) $entityApplySqlBtn.disabled = false;
+      } else {
+        $entityEditorContent!.innerHTML = `<p class="text-wow-red text-sm p-4">No ${entityType} found with ID ${entityId}</p>`;
+        $entitySaveBtn!.disabled = true;
+        $entityDeleteBtn!.disabled = true;
+        $entitySqlCode!.textContent = '-- No entity found';
+        dbState.entityCurrentData = null;
+        dbState.entityOriginalData = null;
+        updateEntityPreview();
+        void loadEntityRelations();
+      }
+      renderAssistantContextSummary();
+      return;
+    }
+
     const result = await window.electronAPI.db.query(`SELECT * FROM \`${cfg.table}\` WHERE \`${cfg.primaryKey}\` = ?`, [entityId]);
     if (result.rows && result.rows.length > 0) {
       renderEntityEditor(result.rows[0] as Record<string, unknown>, cfg);
@@ -3916,6 +4545,7 @@ async function loadEntityById(): Promise<void> {
       updateEntityPreview();
       void loadEntityRelations();
     }
+    renderAssistantContextSummary();
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     $entityEditorContent!.innerHTML = `<p class="text-wow-red text-sm p-4">Error: ${escapeHtml(msg)}</p>`;
@@ -3923,6 +4553,7 @@ async function loadEntityById(): Promise<void> {
     dbState.entityOriginalData = null;
     updateEntityPreview();
     void loadEntityRelations();
+    renderAssistantContextSummary();
   }
 }
 
@@ -3949,6 +4580,7 @@ $entityType?.addEventListener('change', () => {
   if ($entityApplySqlBtn) $entityApplySqlBtn.disabled = true;
   updateEntityPreview();
   void loadEntityRelations();
+  renderAssistantContextSummary();
 });
 
 // New entity
@@ -3966,6 +4598,7 @@ $entityNewBtn?.addEventListener('click', async () => {
     $entitySaveBtn!.disabled = false;
     $entityDeleteBtn!.disabled = true;
     if ($entityApplySqlBtn) $entityApplySqlBtn.disabled = false;
+    renderAssistantContextSummary();
   } catch (err) {
     console.error('Error creating new entity:', err);
   }
@@ -3978,6 +4611,12 @@ $entitySaveBtn?.addEventListener('click', async () => {
   if (!entityType || !dbState.connected) return;
   const cfg = ENTITY_TABLES[entityType];
   if (!cfg) return;
+
+  if (entityType === 'smartai') {
+    const saveBtn = document.getElementById('sai-save-all-btn') as HTMLButtonElement | null;
+    await saveCurrentSmartAiRows(saveBtn);
+    return;
+  }
 
   // Collect latest field values
   const fields: Record<string, unknown> = {};

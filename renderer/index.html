@@ -55,6 +55,7 @@
     <button class="tab" data-tab="accounts">⚙ Accounts</button>
     <button class="tab" data-tab="tickets">✉ Tickets</button>
     <button class="tab" data-tab="database">🗄 Database</button>
+    <button class="tab" data-tab="assistant">✦ Assistant</button>
     <button class="tab" data-tab="map">🗺 Live Map</button>
     <button class="tab" data-tab="logs">📜 Logs</button>
     <button class="tab" data-tab="console">▸ Console</button>
@@ -893,6 +894,57 @@ SELECT * FROM creature_template WHERE entry = 1;" spellcheck="false"></textarea>
       <div id="selector-results" class="selector-results">
         <p class="text-dark-text-muted text-sm p-4">Start typing to search.</p>
       </div>
+    </div>
+  </div>
+
+  <!-- ═════════════════════════════════════════════════════════ -->
+  <!-- TAB: Assistant                                          -->
+  <div id="tab-assistant" class="tab-content">
+    <div class="assistant-layout">
+      <aside class="assistant-sidebar card">
+        <div class="card-header"><h3>LLM Settings</h3></div>
+        <div class="card-body assistant-settings">
+          <label>Endpoint URL
+            <input id="assistant-endpoint" class="input-wow" type="text" placeholder="https://api.openai.com/v1" />
+          </label>
+          <label>API Key
+            <input id="assistant-api-key" class="input-wow" type="password" placeholder="sk-..." />
+          </label>
+          <label>Model
+            <input id="assistant-model" class="input-wow" type="text" placeholder="gpt-4o-mini" />
+          </label>
+          <label>Workflow
+            <select id="assistant-task-type" class="select-wow">
+              <option value="general">General help</option>
+              <option value="command">SOAP command generation</option>
+              <option value="sql">SQL generation</option>
+              <option value="item">Item creation</option>
+              <option value="smartai">SmartAI scripting</option>
+            </select>
+          </label>
+          <div id="assistant-context-summary" class="assistant-context-summary">Context: no database context yet.</div>
+        </div>
+      </aside>
+
+      <main class="assistant-main card card-wide">
+        <div class="card-header">
+          <h3>Development Assistant</h3>
+          <span class="assistant-subtitle">Schema-aware help for SOAP, SQL, item templates, and SmartAI</span>
+        </div>
+        <div id="assistant-thread" class="assistant-thread">
+          <div class="assistant-message assistant-message-system">
+            Ask for commands, SQL, item templates, or SmartAI rows. The assistant will include apply-ready blocks when possible.
+          </div>
+        </div>
+        <div class="assistant-composer">
+          <textarea id="assistant-prompt" class="assistant-prompt" rows="6" placeholder="Example: Create an uncommon level 35 staff with intellect/spirit and generate item_template fields."></textarea>
+          <div class="assistant-actions">
+            <button id="assistant-send-btn" class="btn-wow-primary">Send</button>
+            <button id="assistant-clear-btn" class="btn-wow">Clear Chat</button>
+            <span id="assistant-status" class="text-dark-text-muted text-sm">Idle</span>
+          </div>
+        </div>
+      </main>
     </div>
   </div>
 
