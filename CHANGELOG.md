@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.2.2] - 2026-04-03
+
+### Added
+
+- Live map support for selected playerbots to resolve and display their waypoint destination from the playerbots travel-node database
+- New live-map options to toggle the selected bot waypoint overlay and override the playerbots database name when it differs from the default derived naming
+
+### Improved
+
+- Selected live-map bot details now include resolved waypoint name, node id, and distance in the selection panel
+- Selected bot markers can now render a waypoint guide line and destination marker on the map for quicker travel inspection while debugging playerbot movement
+
 ## [2.2.1] - 2026-03-25
 
 ### Improved

@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron';
-import { SoapConfig, SoapResult, DbConfig, DbConnectionState, QueryResult, FieldInfo, ConnectionProfile, UpdateCheckResult, EntityMediaPreviewRequest, EntityMediaPreviewResult, LogMonitorConfig, LogMonitorInspectionResult, LogMonitorFileTailResult } from './types/electron';
+import { SoapConfig, SoapResult, DbConfig, DbConnectionState, QueryResult, FieldInfo, ConnectionProfile, UpdateCheckResult, EntityMediaPreviewRequest, EntityMediaPreviewResult, LogMonitorConfig, LogMonitorInspectionResult, LogMonitorFileTailResult, LlmChatRequest, LlmChatResponse, MapPlayerPosition, MapBotWaypointRequest, MapBotWaypoint } from './types/electron';
 
 // Type-safe IPC wrapper for renderer process
 const electronAPI = {
@@ -66,11 +66,10 @@ const electronAPI = {
       ipcRenderer.invoke('map:connect', config),
     disconnect: (): Promise<void> =>
       ipcRenderer.invoke('map:disconnect'),
-    getPlayerPositions: (): Promise<Array<{
-      name: string; map: number; position_x: number; position_y: number;
-      level: number; race: number; class: number; account: string;
-    }>> =>
+    getPlayerPositions: (): Promise<MapPlayerPosition[]> =>
       ipcRenderer.invoke('map:getPlayerPositions'),
+    getBotWaypoint: (request: MapBotWaypointRequest): Promise<MapBotWaypoint | null> =>
+      ipcRenderer.invoke('map:getBotWaypoint', request),
   },
 
   // Config/Profile operations

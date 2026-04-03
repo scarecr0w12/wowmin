@@ -2,7 +2,7 @@
 import { ts, escapeHtml, showResult, debounce, getMapName, getZoneName, CLASS_COLORS, RACE_ICONS, RACE_NAMES, CLASS_NAMES } from './utils/helpers';
 import { CONTINENT_BOUNDS, worldToCanvas } from './utils/map-coords';
 import { AppState, createInitialState, PlayerInfo } from './types/state';
-import type { ConnectionProfile, DbConfig, SoapConfig, UpdateCheckResult, EntityMediaPreviewResult, LogMonitorConfig, LogMonitorInspectionResult } from '../../src/types/electron';
+import type { ConnectionProfile, DbConfig, SoapConfig, UpdateCheckResult, EntityMediaPreviewResult, LogMonitorConfig, LogMonitorInspectionResult, LlmConfig, LlmTaskType, LlmChatContext, QueryResult, MapBotWaypoint } from '../../src/types/electron';
 
 // ── Application State ────────────────────────────────────────────────────
 const state: AppState = createInitialState();
@@ -4125,6 +4125,7 @@ interface MapPlayerPosition {
   map: number;
   position_x: number;
   position_y: number;
+  position_z: number;
   level: number;
   race: number;
   class: number;
@@ -4142,6 +4143,8 @@ const $mapPlayerCount     = $<HTMLElement>('map-player-count');
 const $mapPlayerList      = $<HTMLElement>('map-player-list');
 const $mapAutoRefresh     = $<HTMLInputElement>('map-auto-refresh');
 const $mapFilterType      = $<HTMLSelectElement>('map-filter-type');
+const $mapShowBotWaypoint = $<HTMLInputElement>('map-show-bot-waypoint');
+const $mapPlayerbotsDbName = $<HTMLInputElement>('map-playerbots-db-name');
 const $mapRefreshBtn      = $<HTMLButtonElement>('map-refresh-btn');
 const $mapZoomOutBtn      = $<HTMLButtonElement>('map-zoom-out-btn');
 const $mapZoomInBtn       = $<HTMLButtonElement>('map-zoom-in-btn');
@@ -4151,6 +4154,9 @@ const $mapInteractionHint = $<HTMLElement>('map-interaction-hint');
 let mapAllPlayers: MapPlayerPosition[] = [];
 const mapImageCache = new Map<number, HTMLImageElement | 'failed'>();
 let mapSelectedPlayerName: string | null = null;
+let mapSelectedBotWaypoint: MapBotWaypoint | null = null;
+let mapSelectedBotWaypointLoading = false;
+let mapSelectedBotWaypointRequestToken = 0;
 const MAP_MIN_ZOOM = 1;
 const MAP_MAX_ZOOM = 5;
 const MAP_ZOOM_STEP = 1.2;
@@ -4167,6 +4173,69 @@ interface MapViewport {
 interface MapRenderLayout {
   frame: MapViewport;
   content: MapViewport;
+}
+
+function derivePlayerbotsDatabaseName(charactersDatabaseName: string): string {
+  const normalized = charactersDatabaseName.trim();
+  if (!normalized) return 'acore_playerbots';
+  if (/characters$/i.test(normalized)) {
+    return normalized.replace(/characters$/i, 'playerbots');
+  }
+  if (/_char$/i.test(normalized)) {
+    return normalized.replace(/_char$/i, '_playerbots');
+  }
+  return 'acore_playerbots';
+}
+
+function isMapBot(player: Pick<MapPlayerPosition, 'account'> | null | undefined): boolean {
+  return Boolean(player && /^RNDBOT/i.test(player.account));
+}
+
+function getSelectedMapPlayer(): MapPlayerPosition | null {
+  if (!mapSelectedPlayerName) return null;
+  return mapAllPlayers.find((player) => player.name === mapSelectedPlayerName) ?? null;
+}
+
+function clearSelectedBotWaypoint(): void {
+  mapSelectedBotWaypoint = null;
+  mapSelectedBotWaypointLoading = false;
+}
+
+async function refreshSelectedBotWaypoint(): Promise<void> {
+  const requestToken = ++mapSelectedBotWaypointRequestToken;
+  const player = getSelectedMapPlayer();
+  const shouldLoad = Boolean(state.mapDbConnected && $mapShowBotWaypoint?.checked && isMapBot(player));
+
+  if (!shouldLoad || !player) {
+    clearSelectedBotWaypoint();
+    renderMapCanvas();
+    renderMapSelectedPanel();
+    return;
+  }
+
+  mapSelectedBotWaypointLoading = true;
+  renderMapSelectedPanel();
+
+  try {
+    mapSelectedBotWaypoint = await window.electronAPI.map.getBotWaypoint({
+      charName: player.name,
+      map: player.map,
+      position_x: player.position_x,
+      position_y: player.position_y,
+      position_z: player.position_z,
+      playerbotsDatabase: $mapPlayerbotsDbName?.value.trim() || undefined,
+    });
+  } catch {
+    mapSelectedBotWaypoint = null;
+  }
+
+  if (requestToken !== mapSelectedBotWaypointRequestToken) {
+    return;
+  }
+
+  mapSelectedBotWaypointLoading = false;
+  renderMapCanvas();
+  renderMapSelectedPanel();
 }
 
 // ── Image preloading ───────────────────────────────────────────────────────
@@ -4408,6 +4477,10 @@ async function connectMapDb(): Promise<void> {
   const pass = $<HTMLInputElement>('map-db-pass')?.value.trim() || '';
   const db   = $<HTMLInputElement>('map-db-name')?.value.trim() || 'acore_characters';
 
+  if ($mapPlayerbotsDbName && !$mapPlayerbotsDbName.value.trim()) {
+    $mapPlayerbotsDbName.value = derivePlayerbotsDatabaseName(db);
+  }
+
   if ($mapDbStatus) showResult($mapDbStatus, false, 'Connecting…');
   if ($mapDbConnectBtn) $mapDbConnectBtn.disabled = true;
 
@@ -4433,6 +4506,7 @@ async function disconnectMapDb(): Promise<void> {
   if ($mapAutoRefresh) $mapAutoRefresh.checked = false;
   mapAllPlayers = [];
   mapSelectedPlayerName = null;
+  clearSelectedBotWaypoint();
   renderMapCanvas();
   renderMapPlayerList();
   renderMapSelectedPanel();
@@ -4457,6 +4531,7 @@ async function refreshMapPositions(): Promise<void> {
   renderMapCanvas();
   renderMapPlayerList();
   renderMapSelectedPanel();
+  await refreshSelectedBotWaypoint();
 }
 
 function startMapAutoRefresh(): void {
@@ -4547,6 +4622,44 @@ function renderMapCanvas(): void {
 
   const players = getMapFilteredPlayers();
   const showLabels = players.length > 0 && players.length <= 30;
+  const selectedPlayer = getSelectedMapPlayer();
+
+  if (selectedPlayer && mapSelectedBotWaypoint && selectedPlayer.map === state.mapSelectedContinent && mapSelectedBotWaypoint.map === state.mapSelectedContinent) {
+    const botPoint = projectWorldToViewport(selectedPlayer, bounds, content);
+    const waypointPoint = projectWorldToViewport({ position_x: mapSelectedBotWaypoint.x, position_y: mapSelectedBotWaypoint.y }, bounds, content);
+
+    ctx.save();
+    ctx.setLineDash([8, 6]);
+    ctx.strokeStyle = 'rgba(241, 196, 15, 0.95)';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(botPoint.x, botPoint.y);
+    ctx.lineTo(waypointPoint.x, waypointPoint.y);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    ctx.beginPath();
+    ctx.moveTo(waypointPoint.x, waypointPoint.y - 10);
+    ctx.lineTo(waypointPoint.x + 10, waypointPoint.y);
+    ctx.lineTo(waypointPoint.x, waypointPoint.y + 10);
+    ctx.lineTo(waypointPoint.x - 10, waypointPoint.y);
+    ctx.closePath();
+    ctx.fillStyle = '#f1c40f';
+    ctx.shadowColor = 'rgba(241, 196, 15, 0.8)';
+    ctx.shadowBlur = 10;
+    ctx.fill();
+    ctx.shadowBlur = 0;
+    ctx.strokeStyle = '#fff7cf';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+
+    ctx.fillStyle = '#f7d96b';
+    ctx.font = 'bold 12px sans-serif';
+    ctx.shadowColor = 'rgba(0,0,0,0.8)';
+    ctx.shadowBlur = 3;
+    ctx.fillText(`WP: ${mapSelectedBotWaypoint.name}`, waypointPoint.x + 14, waypointPoint.y - 12);
+    ctx.restore();
+  }
 
   for (const p of players) {
     const { x, y } = projectWorldToViewport(p, bounds, content);
@@ -4640,6 +4753,7 @@ function renderMapSelectedPanel(): void {
   const detailsEl = $<HTMLElement>('map-sel-details');
   const coordsEl  = $<HTMLElement>('map-sel-coords');
   const badgeEl   = $<HTMLElement>('map-sel-badge');
+  const waypointEl = $<HTMLElement>('map-sel-waypoint');
 
   const isBot      = /^RNDBOT/i.test(player.account);
   const raceName   = RACE_NAMES[player.race]   || `Race ${player.race}`;
@@ -4651,6 +4765,19 @@ function renderMapSelectedPanel(): void {
   if (badgeEl)   { badgeEl.innerHTML  = isBot ? '<span class="bot-badge">BOT</span>' : ''; }
   if (detailsEl) { detailsEl.textContent = `Lv${player.level} ${raceName} ${clsName}`; }
   if (coordsEl)  { coordsEl.textContent  = `${mapLabel} (${player.position_x.toFixed(0)}, ${player.position_y.toFixed(0)})`; }
+  if (waypointEl) {
+    if (!isBot) {
+      waypointEl.textContent = '';
+    } else if (!$mapShowBotWaypoint?.checked) {
+      waypointEl.textContent = 'Waypoint overlay disabled';
+    } else if (mapSelectedBotWaypointLoading) {
+      waypointEl.textContent = 'Waypoint: loading…';
+    } else if (mapSelectedBotWaypoint) {
+      waypointEl.textContent = `Waypoint: ${mapSelectedBotWaypoint.name} (#${mapSelectedBotWaypoint.nodeId}) • Δ ${mapSelectedBotWaypoint.distance.toFixed(1)}`;
+    } else {
+      waypointEl.textContent = 'Waypoint: no nearby travel node found';
+    }
+  }
 
   panel.classList.remove('hidden');
 }
@@ -4687,6 +4814,7 @@ $mapCanvas?.addEventListener('click', (e) => {
   renderMapCanvas();
   renderMapPlayerList();
   renderMapSelectedPanel();
+  void refreshSelectedBotWaypoint();
 });
 
 // ── Sidebar list click → select ───────────────────────────────────────────
@@ -4700,6 +4828,7 @@ $mapPlayerList?.addEventListener('click', (e) => {
   renderMapCanvas();
   renderMapPlayerList();
   renderMapSelectedPanel();
+  void refreshSelectedBotWaypoint();
 });
 
 // ── Selection panel SOAP actions ───────────────────────────────────────────
@@ -4733,6 +4862,7 @@ $('map-selected-panel')?.addEventListener('click', async (e) => {
 // ── Deselect button ────────────────────────────────────────────────────────
 $('map-deselect-btn')?.addEventListener('click', () => {
   mapSelectedPlayerName = null;
+  clearSelectedBotWaypoint();
   renderMapCanvas();
   renderMapPlayerList();
   renderMapSelectedPanel();
@@ -4877,6 +5007,7 @@ $$<HTMLButtonElement>('.map-continent-btn').forEach((btn) => {
     preloadMapImage(state.mapSelectedContinent);
     resetMapZoom(false);
     mapSelectedPlayerName = null;
+    clearSelectedBotWaypoint();
     if ($mapPlayerCount) $mapPlayerCount.textContent = `${getMapFilteredPlayers().length} on this map`;
     renderMapCanvas();
     renderMapPlayerList();
@@ -4894,6 +5025,14 @@ $mapZoomResetBtn?.addEventListener('click', () => resetMapZoom());
 
 $mapAutoRefresh?.addEventListener('change', () => {
   if ($mapAutoRefresh.checked) startMapAutoRefresh(); else stopMapAutoRefresh();
+});
+
+$mapShowBotWaypoint?.addEventListener('change', () => {
+  void refreshSelectedBotWaypoint();
+});
+
+$mapPlayerbotsDbName?.addEventListener('change', () => {
+  void refreshSelectedBotWaypoint();
 });
 
 $mapFilterType?.addEventListener('change', () => {

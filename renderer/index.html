@@ -1031,12 +1031,18 @@ SELECT * FROM creature_template WHERE entry = 1;" spellcheck="false"></textarea>
             <label class="auto-refresh-toggle">
               <input type="checkbox" id="map-auto-refresh" /> Auto (5 s)
             </label>
+            <label class="auto-refresh-toggle">
+              <input type="checkbox" id="map-show-bot-waypoint" checked /> Show selected bot waypoint
+            </label>
             <label class="filter-label">Show
               <select id="map-filter-type">
                 <option value="all">All</option>
                 <option value="real" selected>Players Only</option>
                 <option value="bots">Bots Only</option>
               </select>
+            </label>
+            <label class="filter-label">Playerbots DB
+              <input type="text" id="map-playerbots-db-name" value="acore_playerbots" />
             </label>
           </div>
         </div>
@@ -1075,6 +1081,7 @@ SELECT * FROM creature_template WHERE entry = 1;" spellcheck="false"></textarea>
             <span id="map-sel-badge"></span>
             <span id="map-sel-details" class="map-sel-details"></span>
             <span id="map-sel-coords" class="map-sel-coords"></span>
+            <span id="map-sel-waypoint" class="map-sel-waypoint"></span>
           </div>
           <div class="map-sel-actions">
             <button class="btn btn-tiny map-action-btn" data-map-action="pinfo">&#8505; Info</button>

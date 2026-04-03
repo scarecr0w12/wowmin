@@ -4,7 +4,7 @@ import packageJson from '../package.json';
 import { SoapClient } from './soap-client';
 import { ConfigStore } from './config-store';
 import { getDbService, DatabaseService } from './database/db-service';
-import { SoapConfig, SoapResult, ConnectionProfile, DbConfig, DbConnectionState, QueryResult, FieldInfo, UpdateCheckResult, EntityMediaPreviewRequest, EntityMediaPreviewResult, LogMonitorConfig, LogMonitorInspectionResult, LogMonitorFileTailResult } from './types/electron';
+import { SoapConfig, SoapResult, ConnectionProfile, DbConfig, DbConnectionState, QueryResult, FieldInfo, UpdateCheckResult, EntityMediaPreviewRequest, EntityMediaPreviewResult, LogMonitorConfig, LogMonitorInspectionResult, LogMonitorFileTailResult, LlmChatRequest, LlmChatResponse, LlmTaskType, MapPlayerPosition, MapBotWaypointRequest, MapBotWaypoint } from './types/electron';
 import { inspectRemoteLogs, readRemoteLogTail } from './log-monitor-service';
 
 const isMac = process.platform === 'darwin';
@@ -569,22 +569,12 @@ ipcMain.handle('db:rollback', async (): Promise<void> => {
 
 // ── Map IPC Handlers ───────────────────────────────────────────
 
-interface MapPlayerRow {
-  name: string;
-  map: number;
-  position_x: number;
-  position_y: number;
-  level: number;
-  race: number;
-  class: number;
-  account: string;
-}
-
-interface MapPlayerQueryRow extends Omit<MapPlayerRow, 'account'> {
+interface MapPlayerQueryRow extends Omit<MapPlayerPosition, 'account'> {
   account: string | number;
 }
 
 let mapAuthDatabaseName = 'acore_auth';
+let mapPlayerbotsDatabaseName = 'acore_playerbots';
 
 function deriveAuthDatabaseName(charactersDatabaseName: string): string {
   const normalized = charactersDatabaseName.trim();
@@ -598,6 +588,18 @@ function deriveAuthDatabaseName(charactersDatabaseName: string): string {
   return 'acore_auth';
 }
 
+function derivePlayerbotsDatabaseName(charactersDatabaseName: string): string {
+  const normalized = charactersDatabaseName.trim();
+  if (!normalized) return 'acore_playerbots';
+  if (/characters$/i.test(normalized)) {
+    return normalized.replace(/characters$/i, 'playerbots');
+  }
+  if (/_char$/i.test(normalized)) {
+    return normalized.replace(/_char$/i, '_playerbots');
+  }
+  return 'acore_playerbots';
+}
+
 function escapeIdentifier(identifier: string): string {
   return `\`${identifier.replace(/`/g, '``')}\``;
 }
@@ -607,6 +609,7 @@ ipcMain.handle('map:connect', async (_event, config: DbConfig): Promise<DbConnec
     const result = await mapDbService.connect(config);
     if (result.success) {
       mapAuthDatabaseName = deriveAuthDatabaseName(config.database || '');
+      mapPlayerbotsDatabaseName = derivePlayerbotsDatabaseName(config.database || '');
       return { connected: true, database: config.database, error: null };
     }
     return { connected: false, database: null, error: result.message };
@@ -623,7 +626,7 @@ ipcMain.handle('map:disconnect', async (): Promise<void> => {
 ipcMain.handle('map:getPlayerPositions', async (): Promise<MapPlayerRow[]> => {
   try {
     const result = await mapDbService.query<MapPlayerQueryRow>(
-      'SELECT name, map, position_x, position_y, level, race, `class`, account FROM characters WHERE online = 1'
+      'SELECT name, map, position_x, position_y, position_z, level, race, `class`, account FROM characters WHERE online = 1'
     );
     const rows = result.rows || [];
     if (rows.length === 0) {
@@ -665,6 +668,48 @@ ipcMain.handle('map:getPlayerPositions', async (): Promise<MapPlayerRow[]> => {
     });
   } catch {
     return [];
+  }
+});
+
+ipcMain.handle('map:getBotWaypoint', async (_event, request: MapBotWaypointRequest): Promise<MapBotWaypoint | null> => {
+  try {
+    const databaseName = request.playerbotsDatabase?.trim() || mapPlayerbotsDatabaseName;
+    const travelTable = `${escapeIdentifier(databaseName)}.\`playerbots_travelnode\``;
+    const result = await mapDbService.query<{
+      id: number;
+      name: string;
+      map_id: number;
+      x: number;
+      y: number;
+      z: number;
+      distance_sq: number;
+    }>(
+      `SELECT id, name, map_id, x, y, z,
+              POW(x - ?, 2) + POW(y - ?, 2) + POW(z - ?, 2) AS distance_sq
+         FROM ${travelTable}
+        WHERE map_id = ?
+        ORDER BY distance_sq ASC
+        LIMIT 1`,
+      [request.position_x, request.position_y, request.position_z, request.map],
+    );
+
+    const row = result.rows[0];
+    if (!row) {
+      return null;
+    }
+
+    return {
+      nodeId: Number(row.id),
+      name: row.name,
+      map: Number(row.map_id),
+      x: Number(row.x),
+      y: Number(row.y),
+      z: Number(row.z),
+      distance: Math.sqrt(Math.max(0, Number(row.distance_sq) || 0)),
+      sourceDatabase: databaseName,
+    };
+  } catch {
+    return null;
   }
 });
 
