@@ -3153,6 +3153,11 @@ tbody tr:hover { background: rgba(233,69,96,.05); }
 .map-sel-name    { font-weight: bold; font-size: 14px; }
 .map-sel-details { color: var(--text-muted); font-size: 12px; }
 .map-sel-coords  { color: var(--text-muted); font-size: 11px; font-family: var(--font-mono); }
+.map-sel-waypoint {
+  color: var(--yellow);
+  font-size: 11px;
+  font-family: var(--font-mono);
+}
 .map-sel-actions { display: flex; gap: 5px; flex-wrap: wrap; }
 .btn-danger-action { background: rgba(200,40,40,0.25); border-color: rgba(200,40,40,0.5); }
 .btn-danger-action:hover { background: rgba(200,40,40,0.45); }
@@ -3170,6 +3175,21 @@ tbody tr:hover { background: rgba(233,69,96,.05); }
   white-space: nowrap;
 }
 .map-player-lvl { color: var(--text-muted); font-size: 11px; }
+
+#map-playerbots-db-name {
+  margin-top: 3px;
+  padding: 5px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-input);
+  color: var(--text);
+  font-size: 12px;
+  outline: none;
+}
+
+#map-playerbots-db-name:focus {
+  border-color: var(--accent);
+}
 
 @media (max-width: 1280px) {
   .entity-workspace {

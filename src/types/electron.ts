@@ -30,6 +30,38 @@ export interface QueryResult<T = Record<string, unknown>> {
   insertId?: number;
 }
 
+export interface MapPlayerPosition {
+  name: string;
+  map: number;
+  position_x: number;
+  position_y: number;
+  position_z: number;
+  level: number;
+  race: number;
+  class: number;
+  account: string;
+}
+
+export interface MapBotWaypointRequest {
+  charName: string;
+  map: number;
+  position_x: number;
+  position_y: number;
+  position_z: number;
+  playerbotsDatabase?: string;
+}
+
+export interface MapBotWaypoint {
+  nodeId: number;
+  name: string;
+  map: number;
+  x: number;
+  y: number;
+  z: number;
+  distance: number;
+  sourceDatabase: string;
+}
+
 // ── SOAP Types ────────────────────────────────────────────────────────────
 
 export interface SoapConfig {
@@ -217,6 +249,12 @@ export type IpcChannels = {
   'db:beginTransaction': () => void;
   'db:commit': () => void;
   'db:rollback': () => void;
+
+  // Live map operations
+  'map:connect': (config: DbConfig) => DbConnectionState;
+  'map:disconnect': () => void;
+  'map:getPlayerPositions': () => MapPlayerPosition[];
+  'map:getBotWaypoint': (request: MapBotWaypointRequest) => MapBotWaypoint | null;
   
   // Profile operations
   'config:getProfiles': () => ConnectionProfile[];
