@@ -1,10 +1,10 @@
-import { app, BrowserWindow, ipcMain, Menu, shell } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, Menu, shell } from 'electron';
 import * as path from 'path';
 import packageJson from '../package.json';
 import { SoapClient } from './soap-client';
 import { ConfigStore } from './config-store';
 import { getDbService, DatabaseService } from './database/db-service';
-import { SoapConfig, SoapResult, ConnectionProfile, DbConfig, DbConnectionState, QueryResult, FieldInfo, UpdateCheckResult, EntityMediaPreviewRequest, EntityMediaPreviewResult, LogMonitorConfig, LogMonitorInspectionResult, LogMonitorFileTailResult, LlmChatRequest, LlmChatResponse, LlmTaskType, MapPlayerPosition, MapBotWaypointRequest, MapBotWaypoint } from './types/electron';
+import { SoapConfig, SoapResult, ConnectionProfile, DbConfig, DbConnectionState, QueryResult, FieldInfo, UpdateCheckResult, EntityMediaPreviewRequest, EntityMediaPreviewResult, LogMonitorConfig, LogMonitorInspectionResult, LogMonitorFileTailResult, LlmChatRequest, LlmChatResponse, LlmTaskType, MapPlayerPosition, MapBotWaypointRequest, MapBotWaypoint, CharacterInventoryResult, CharacterInventoryItemRow } from './types/electron';
 import { inspectRemoteLogs, readRemoteLogTail } from './log-monitor-service';
 
 const isMac = process.platform === 'darwin';
@@ -21,6 +21,17 @@ const DEFAULT_GITHUB_REPO = 'scarecr0w12/wowmin';
 let updateCheckCache: { checkedAt: number; result: UpdateCheckResult } | null = null;
 const ENTITY_MEDIA_CACHE_TTL_MS = 60 * 60 * 1000;
 const entityMediaCache = new Map<string, { expiresAt: number; result: EntityMediaPreviewResult }>();
+
+const NAVIGATE_TAB_ITEMS: { label: string; tab: string }[] = [
+  { label: 'Dashboard', tab: 'dashboard' },
+  { label: 'Players', tab: 'players' },
+  { label: 'Accounts', tab: 'accounts' },
+  { label: 'Tickets', tab: 'tickets' },
+  { label: 'Database', tab: 'database' },
+  { label: 'Live Map', tab: 'map' },
+  { label: 'Logs', tab: 'logs' },
+  { label: 'Console', tab: 'console' },
+];
 
 function getGithubRepoSlug(): string {
   const metadataSources = [packageJson.homepage, (packageJson as { repository?: string | { url?: string } }).repository]
@@ -378,10 +389,50 @@ function createWindow(): void {
         { role: 'reload' as const },
         { role: 'toggleDevTools' as const },
         { type: 'separator' as const },
+        {
+          label: 'Navigate',
+          submenu: NAVIGATE_TAB_ITEMS.map((item) => ({
+            label: item.label,
+            click: (): void => {
+              mainWindow?.webContents.send('app:navigate-tab', item.tab);
+            },
+          })),
+        },
+        { type: 'separator' as const },
         { role: 'zoomIn' as const },
         { role: 'zoomOut' as const },
         { role: 'resetZoom' as const },
         ...(isMac ? [{ type: 'separator' as const }, { role: 'togglefullscreen' as const }] : []),
+      ],
+    },
+    {
+      label: 'Help',
+      submenu: [
+        {
+          label: 'Documentation',
+          click: async (): Promise<void> => {
+            const url =
+              typeof packageJson.homepage === 'string' && packageJson.homepage
+                ? packageJson.homepage
+                : `https://github.com/${getGithubRepoSlug()}`;
+            await shell.openExternal(url);
+          },
+        },
+        ...(!isMac
+          ? [
+              {
+                label: `About ${app.name}`,
+                click: async (): Promise<void> => {
+                  await dialog.showMessageBox({
+                    type: 'info',
+                    title: app.name,
+                    message: app.name,
+                    detail: `Version ${app.getVersion()}\n${packageJson.description ?? ''}`.trim(),
+                  });
+                },
+              },
+            ]
+          : []),
       ],
     },
     ...(isMac
@@ -604,6 +655,114 @@ function escapeIdentifier(identifier: string): string {
   return `\`${identifier.replace(/`/g, '``')}\``;
 }
 
+function deriveWorldDatabaseName(charactersDatabaseName: string): string {
+  const normalized = charactersDatabaseName.trim();
+  if (!normalized) return 'acore_world';
+  if (/characters$/i.test(normalized)) {
+    return normalized.replace(/characters$/i, 'world');
+  }
+  if (/_char$/i.test(normalized)) {
+    return normalized.replace(/_char$/i, '_world');
+  }
+  return 'acore_world';
+}
+
+function isCharactersDatabase(database: string): boolean {
+  const normalized = database.trim();
+  if (!normalized) return false;
+  if (/characters$/i.test(normalized)) return true;
+  if (/_char$/i.test(normalized)) return true;
+  return false;
+}
+
+function getCharactersDbService(): DatabaseService | null {
+  if (mapDbService.connected && mapDbService.config?.database && isCharactersDatabase(mapDbService.config.database)) {
+    return mapDbService;
+  }
+  if (dbService.connected && dbService.config?.database && isCharactersDatabase(dbService.config.database)) {
+    return dbService;
+  }
+  return null;
+}
+
+function numField(v: unknown, fallback = 0): number {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : fallback;
+}
+
+/** MySQL may return column names lowercased depending on server OS/settings. */
+function rowVal(raw: Record<string, unknown>, key: string): unknown {
+  if (Object.prototype.hasOwnProperty.call(raw, key)) return raw[key];
+  const lower = key.toLowerCase();
+  for (const k of Object.keys(raw)) {
+    if (k.toLowerCase() === lower) return raw[k];
+  }
+  return undefined;
+}
+
+function mapInventorySqlRow(raw: Record<string, unknown>): CharacterInventoryItemRow {
+  const s = (k: string): string => {
+    const v = rowVal(raw, k);
+    return v == null ? '' : String(v);
+  };
+  const n = (k: string, d = 0): number => numField(rowVal(raw, k), d);
+
+  return {
+    bag: n('bag'),
+    slot: n('slot'),
+    itemGuid: n('itemGuid'),
+    itemEntry: n('itemEntry'),
+    count: n('count', 1),
+    currentDurability: n('currentDurability'),
+    maxDurability: n('maxDurability'),
+    enchantments: s('enchantments'),
+    name: s('name') || 'Unknown item',
+    Quality: n('Quality'),
+    ItemLevel: n('ItemLevel'),
+    itemClass: n('itemClass'),
+    subclass: n('subclass'),
+    InventoryType: n('InventoryType'),
+    armor: n('armor'),
+    dmg_min1: n('dmg_min1'),
+    dmg_max1: n('dmg_max1'),
+    dmg_min2: n('dmg_min2'),
+    dmg_max2: n('dmg_max2'),
+    delay: n('delay'),
+    bonding: n('bonding'),
+    description: s('description'),
+    holy_res: n('holy_res'),
+    fire_res: n('fire_res'),
+    nature_res: n('nature_res'),
+    frost_res: n('frost_res'),
+    shadow_res: n('shadow_res'),
+    arcane_res: n('arcane_res'),
+    stat_type1: n('stat_type1'),
+    stat_value1: n('stat_value1'),
+    stat_type2: n('stat_type2'),
+    stat_value2: n('stat_value2'),
+    stat_type3: n('stat_type3'),
+    stat_value3: n('stat_value3'),
+    stat_type4: n('stat_type4'),
+    stat_value4: n('stat_value4'),
+    stat_type5: n('stat_type5'),
+    stat_value5: n('stat_value5'),
+    stat_type6: n('stat_type6'),
+    stat_value6: n('stat_value6'),
+    stat_type7: n('stat_type7'),
+    stat_value7: n('stat_value7'),
+    stat_type8: n('stat_type8'),
+    stat_value8: n('stat_value8'),
+    stat_type9: n('stat_type9'),
+    stat_value9: n('stat_value9'),
+    stat_type10: n('stat_type10'),
+    stat_value10: n('stat_value10'),
+    socketColor_1: n('socketColor_1'),
+    socketColor_2: n('socketColor_2'),
+    socketColor_3: n('socketColor_3'),
+    ContainerSlots: n('ContainerSlots'),
+  };
+}
+
 ipcMain.handle('map:connect', async (_event, config: DbConfig): Promise<DbConnectionState> => {
   try {
     const result = await mapDbService.connect(config);
@@ -621,6 +780,163 @@ ipcMain.handle('map:connect', async (_event, config: DbConfig): Promise<DbConnec
 
 ipcMain.handle('map:disconnect', async (): Promise<void> => {
   await mapDbService.disconnect();
+});
+
+ipcMain.handle('inventory:getCharacterInventory', async (_event, characterName: string): Promise<CharacterInventoryResult> => {
+  const name = characterName?.trim() ?? '';
+  if (!name) {
+    return {
+      success: false,
+      message: 'Character name is required.',
+      characterName: '',
+      characterGuid: null,
+      items: [],
+      bagLabels: {},
+    };
+  }
+
+  const charDb = getCharactersDbService();
+  if (!charDb?.config?.database) {
+    return {
+      success: false,
+      message:
+        'No characters database connection. Connect the Live Map DB (recommended) or the Database tab to your characters database — same host as world — then try again.',
+      characterName: name,
+      characterGuid: null,
+      items: [],
+      bagLabels: {},
+    };
+  }
+
+  const worldDb = deriveWorldDatabaseName(charDb.config.database);
+  const worldTable = `${escapeIdentifier(worldDb)}.\`item_template\``;
+
+  try {
+    const guidRes = await charDb.query<{ guid: number }>(
+      'SELECT guid FROM characters WHERE LOWER(name) = LOWER(?) LIMIT 1',
+      [name],
+    );
+    const guidRow = guidRes.rows[0];
+    if (!guidRow) {
+      return {
+        success: false,
+        message: `No character named "${name}" in the connected characters database.`,
+        characterName: name,
+        characterGuid: null,
+        items: [],
+        bagLabels: {},
+      };
+    }
+    const characterGuid = numField(guidRow.guid as unknown);
+
+    const invSql = `
+      SELECT
+        ci.bag AS bag,
+        ci.slot AS slot,
+        ii.guid AS itemGuid,
+        ii.itemEntry AS itemEntry,
+        ii.count AS count,
+        ii.durability AS currentDurability,
+        COALESCE(it.MaxDurability, 0) AS maxDurability,
+        ii.enchantments AS enchantments,
+        it.name AS name,
+        it.Quality AS Quality,
+        it.ItemLevel AS ItemLevel,
+        it.\`class\` AS itemClass,
+        it.subclass AS subclass,
+        it.InventoryType AS InventoryType,
+        it.armor AS armor,
+        it.dmg_min1 AS dmg_min1,
+        it.dmg_max1 AS dmg_max1,
+        it.dmg_min2 AS dmg_min2,
+        it.dmg_max2 AS dmg_max2,
+        it.delay AS delay,
+        it.bonding AS bonding,
+        COALESCE(it.description, '') AS description,
+        it.holy_res AS holy_res,
+        it.fire_res AS fire_res,
+        it.nature_res AS nature_res,
+        it.frost_res AS frost_res,
+        it.shadow_res AS shadow_res,
+        it.arcane_res AS arcane_res,
+        it.stat_type1 AS stat_type1,
+        it.stat_value1 AS stat_value1,
+        it.stat_type2 AS stat_type2,
+        it.stat_value2 AS stat_value2,
+        it.stat_type3 AS stat_type3,
+        it.stat_value3 AS stat_value3,
+        it.stat_type4 AS stat_type4,
+        it.stat_value4 AS stat_value4,
+        it.stat_type5 AS stat_type5,
+        it.stat_value5 AS stat_value5,
+        it.stat_type6 AS stat_type6,
+        it.stat_value6 AS stat_value6,
+        it.stat_type7 AS stat_type7,
+        it.stat_value7 AS stat_value7,
+        it.stat_type8 AS stat_type8,
+        it.stat_value8 AS stat_value8,
+        it.stat_type9 AS stat_type9,
+        it.stat_value9 AS stat_value9,
+        it.stat_type10 AS stat_type10,
+        it.stat_value10 AS stat_value10,
+        it.socketColor_1 AS socketColor_1,
+        it.socketColor_2 AS socketColor_2,
+        it.socketColor_3 AS socketColor_3,
+        COALESCE(it.ContainerSlots, 0) AS ContainerSlots
+      FROM character_inventory ci
+      INNER JOIN item_instance ii ON ci.item = ii.guid
+      INNER JOIN ${worldTable} it ON ii.itemEntry = it.entry
+      WHERE ci.guid = ?
+    `;
+
+    const invRes = await charDb.query<Record<string, unknown>>(invSql, [characterGuid]);
+    const items = invRes.rows.map(mapInventorySqlRow);
+
+    const bagIds = [...new Set(items.map((i) => i.bag).filter((b) => b > 0))];
+    const bagLabels: Record<string, string> = {};
+
+    if (bagIds.length > 0) {
+      const ph = bagIds.map(() => '?').join(', ');
+      const bagSql = `
+        SELECT ii.guid AS guid, it.name AS name
+        FROM item_instance ii
+        INNER JOIN ${worldTable} it ON ii.itemEntry = it.entry
+        WHERE ii.guid IN (${ph})
+      `;
+      const bagRes = await charDb.query<{ guid: number; name: string }>(bagSql, bagIds);
+      for (const row of bagRes.rows) {
+        bagLabels[String(row.guid)] = String(row.name);
+      }
+    }
+
+    items.sort((a, b) => {
+      if (a.bag !== b.bag) {
+        if (a.bag === 0) return -1;
+        if (b.bag === 0) return 1;
+        return a.bag - b.bag;
+      }
+      return a.slot - b.slot;
+    });
+
+    return {
+      success: true,
+      message: `${items.length} item stack(s).`,
+      characterName: name,
+      characterGuid,
+      items,
+      bagLabels,
+    };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return {
+      success: false,
+      message: msg,
+      characterName: name,
+      characterGuid: null,
+      items: [],
+      bagLabels: {},
+    };
+  }
 });
 
 ipcMain.handle('map:getPlayerPositions', async (): Promise<MapPlayerRow[]> => {

@@ -1,6 +1,6 @@
 {
   "name": "wow-admin",
-  "version": "2.2.2",
+  "version": "2.2.3",
   "description": "Desktop admin tool for AzerothCore servers with SOAP and Database editing",
   "main": "dist/main.js",
   "scripts": {

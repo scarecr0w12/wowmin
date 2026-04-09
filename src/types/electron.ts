@@ -62,6 +62,72 @@ export interface MapBotWaypoint {
   sourceDatabase: string;
 }
 
+/** One row from character_inventory + item_instance + item_template (inventory browser). */
+export interface CharacterInventoryItemRow {
+  bag: number;
+  slot: number;
+  itemGuid: number;
+  itemEntry: number;
+  count: number;
+  currentDurability: number;
+  maxDurability: number;
+  enchantments: string;
+  name: string;
+  Quality: number;
+  ItemLevel: number;
+  itemClass: number;
+  subclass: number;
+  InventoryType: number;
+  armor: number;
+  dmg_min1: number;
+  dmg_max1: number;
+  dmg_min2: number;
+  dmg_max2: number;
+  delay: number;
+  bonding: number;
+  description: string;
+  holy_res: number;
+  fire_res: number;
+  nature_res: number;
+  frost_res: number;
+  shadow_res: number;
+  arcane_res: number;
+  stat_type1: number;
+  stat_value1: number;
+  stat_type2: number;
+  stat_value2: number;
+  stat_type3: number;
+  stat_value3: number;
+  stat_type4: number;
+  stat_value4: number;
+  stat_type5: number;
+  stat_value5: number;
+  stat_type6: number;
+  stat_value6: number;
+  stat_type7: number;
+  stat_value7: number;
+  stat_type8: number;
+  stat_value8: number;
+  stat_type9: number;
+  stat_value9: number;
+  stat_type10: number;
+  stat_value10: number;
+  socketColor_1: number;
+  socketColor_2: number;
+  socketColor_3: number;
+  ContainerSlots: number;
+}
+
+export interface CharacterInventoryResult {
+  success: boolean;
+  message: string;
+  characterName: string;
+  characterGuid: number | null;
+  items: CharacterInventoryItemRow[];
+  /** item_instance.guid of a container → display name */
+  bagLabels: Record<string, string>;
+}
+
 // ── SOAP Types ────────────────────────────────────────────────────────────
 
 export interface SoapConfig {
@@ -221,7 +287,9 @@ export type IpcChannels = {
   'map:disconnect': () => void;
   'map:getPlayerPositions': () => MapPlayerPosition[];
   'map:getBotWaypoint': (request: MapBotWaypointRequest) => MapBotWaypoint | null;
-  
+
+  'inventory:getCharacterInventory': (characterName: string) => CharacterInventoryResult;
+
   // Profile operations
   'config:getProfiles': () => ConnectionProfile[];
   'config:getActiveProfileId': () => string | null;

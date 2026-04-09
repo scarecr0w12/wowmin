@@ -1,5 +1,5 @@
-import { contextBridge, ipcRenderer } from 'electron';
-import { SoapConfig, SoapResult, DbConfig, DbConnectionState, QueryResult, FieldInfo, ConnectionProfile, UpdateCheckResult, EntityMediaPreviewRequest, EntityMediaPreviewResult, LogMonitorConfig, LogMonitorInspectionResult, LogMonitorFileTailResult, LlmChatRequest, LlmChatResponse, MapPlayerPosition, MapBotWaypointRequest, MapBotWaypoint } from './types/electron';
+import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron';
+import { SoapConfig, SoapResult, DbConfig, DbConnectionState, QueryResult, FieldInfo, ConnectionProfile, UpdateCheckResult, EntityMediaPreviewRequest, EntityMediaPreviewResult, LogMonitorConfig, LogMonitorInspectionResult, LogMonitorFileTailResult, LlmChatRequest, LlmChatResponse, MapPlayerPosition, MapBotWaypointRequest, MapBotWaypoint, CharacterInventoryResult } from './types/electron';
 
 // Type-safe IPC wrapper for renderer process
 const electronAPI = {
@@ -27,6 +27,16 @@ const electronAPI = {
       ipcRenderer.invoke('app:openExternal', url),
     getEntityMediaPreview: (request: EntityMediaPreviewRequest): Promise<EntityMediaPreviewResult> =>
       ipcRenderer.invoke('app:getEntityMediaPreview', request),
+    /** Subscribe to main-process menu navigation; returns unsubscribe. */
+    onNavigateTab: (callback: (tabId: string) => void): (() => void) => {
+      const listener = (_event: IpcRendererEvent, tabId: string): void => {
+        callback(tabId);
+      };
+      ipcRenderer.on('app:navigate-tab', listener);
+      return () => {
+        ipcRenderer.removeListener('app:navigate-tab', listener);
+      };
+    },
   },
 
   update: {
@@ -70,6 +80,11 @@ const electronAPI = {
       ipcRenderer.invoke('map:getPlayerPositions'),
     getBotWaypoint: (request: MapBotWaypointRequest): Promise<MapBotWaypoint | null> =>
       ipcRenderer.invoke('map:getBotWaypoint', request),
+  },
+
+  inventory: {
+    getCharacterInventory: (characterName: string): Promise<CharacterInventoryResult> =>
+      ipcRenderer.invoke('inventory:getCharacterInventory', characterName),
   },
 
   // Config/Profile operations

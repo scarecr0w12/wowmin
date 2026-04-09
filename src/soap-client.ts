@@ -43,6 +43,8 @@ export class SoapClient {
   private port: number;
   private username: string;
   private password: string;
+  /** Worldserver SOAP is effectively single-threaded; parallel HTTP requests stall until the client times out. */
+  private commandChain: Promise<void> = Promise.resolve();
 
   constructor({
     host = '127.0.0.1',
@@ -63,10 +65,10 @@ export class SoapClient {
   private buildEnvelope(command: string): string {
     // Escape XML special characters in the command
     const escaped = command
-      .replace(/&/g, '&')
-      .replace(/</g, '<')
-      .replace(/>/g, '>')
-      .replace(/"/g, '"');
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
 
     return [
       '<?xml version="1.0" encoding="UTF-8"?>',
@@ -91,6 +93,29 @@ export class SoapClient {
    * @returns Promise with success status and message
    */
   executeCommand(command: string): Promise<SoapResult> {
+    let settle!: (r: SoapResult) => void;
+    let bail!: (e: Error) => void;
+    const result = new Promise<SoapResult>((resolve, reject) => {
+      settle = resolve;
+      bail = reject;
+    });
+
+    this.commandChain = this.commandChain.then(() =>
+      this.executeCommandImmediate(command).then(
+        (r) => {
+          settle(r);
+        },
+        (err: unknown) => {
+          bail(err instanceof Error ? err : new Error(String(err)));
+        }
+      )
+    );
+
+    return result;
+  }
+
+  /** Single in-flight SOAP HTTP request (invoked only from the serialized chain). */
+  private executeCommandImmediate(command: string): Promise<SoapResult> {
     return new Promise((resolve, reject) => {
       const body = this.buildEnvelope(command);
 

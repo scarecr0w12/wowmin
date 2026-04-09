@@ -2,139 +2,199 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Custom base styles for dark theme */
+/* Custom base — aligned with renderer/styles.css :root */
 @layer base {
   html {
-    @apply bg-dark-bg text-dark-text;
+    background-color: var(--color-bg);
+    color: var(--color-text);
   }
-  
+
   body {
     @apply font-sans antialiased;
   }
 
-  /* Custom scrollbar for dark theme */
   ::-webkit-scrollbar {
     @apply w-2 h-2;
   }
 
   ::-webkit-scrollbar-track {
-    @apply bg-dark-bg-secondary;
+    background-color: var(--color-surface);
   }
 
   ::-webkit-scrollbar-thumb {
-    @apply bg-dark-border rounded;
+    @apply rounded;
+    background-color: var(--color-border);
   }
 
   ::-webkit-scrollbar-thumb:hover {
-    @apply bg-dark-text-muted;
+    background-color: var(--color-text-muted);
   }
 }
 
-/* Custom component styles */
+/* Shared with global .btn / database toolbar — flat admin style */
 @layer components {
-  /* WoW-style button */
   .btn-wow {
-    @apply px-4 py-2 rounded font-semibold transition-all duration-200;
-    @apply bg-gradient-to-b from-[#4a4a4a] to-[#2a2a2a];
-    @apply border border-[#5a5a5a] border-b-[#1a1a1a];
-    @apply text-wow-gold hover:text-white;
-    @apply hover:from-[#5a5a5a] hover:to-[#3a3a3a];
-    @apply active:from-[#3a3a3a] active:to-[#2a2a2a];
-    @apply disabled:opacity-50 disabled:cursor-not-allowed;
+    @apply px-4 py-2 rounded font-semibold transition-colors duration-150;
+    @apply border text-sm;
+    background-color: var(--color-input);
+    border-color: var(--color-border);
+    color: var(--color-text);
+  }
+
+  .btn-wow:hover:not(:disabled) {
+    border-color: var(--color-accent);
+    background-color: color-mix(in srgb, var(--color-accent) 14%, var(--color-input));
+    color: var(--color-text);
+  }
+
+  .btn-wow:disabled {
+    @apply opacity-40 cursor-not-allowed;
   }
 
   .btn-wow-primary {
-    @apply btn-wow;
-    @apply from-wow-blue to-wow-blue-dark;
-    @apply border-wow-blue border-b-wow-blue-dark;
-    @apply text-white;
-    @apply hover:from-wow-blue hover:to-wow-blue;
+    @apply px-4 py-2 rounded font-semibold text-sm transition-all duration-150 border;
+    background: linear-gradient(180deg, var(--color-accent-hover) 0%, var(--color-accent) 100%);
+    border-color: color-mix(in srgb, var(--color-accent) 85%, #000);
+    color: #1a1408;
+    box-shadow: 0 1px 0 color-mix(in srgb, #fff 10%, transparent);
+  }
+
+  .btn-wow-primary:hover:not(:disabled) {
+    filter: brightness(1.05);
+    border-color: var(--color-accent-hover);
+  }
+
+  .btn-wow-primary:disabled {
+    @apply opacity-40 cursor-not-allowed;
   }
 
   .btn-wow-success {
-    @apply btn-wow;
-    @apply from-wow-green to-wow-green-dark;
-    @apply border-wow-green border-b-wow-green-dark;
-    @apply text-dark-bg;
-    @apply hover:from-wow-green hover:to-wow-green;
+    @apply px-4 py-2 rounded font-semibold text-sm transition-colors duration-150 border;
+    background-color: var(--color-success);
+    border-color: color-mix(in srgb, var(--color-success) 80%, #000);
+    color: #06140f;
+  }
+
+  .btn-wow-success:hover:not(:disabled) {
+    background-color: var(--color-success-hover);
+    border-color: var(--color-success-hover);
+  }
+
+  .btn-wow-success:disabled {
+    @apply opacity-40 cursor-not-allowed;
   }
 
   .btn-wow-danger {
-    @apply btn-wow;
-    @apply from-wow-red to-wow-red-dark;
-    @apply border-wow-red border-b-wow-red-dark;
-    @apply text-white;
-    @apply hover:from-wow-red hover:to-wow-red;
+    @apply px-4 py-2 rounded font-semibold text-sm transition-colors duration-150 border;
+    background-color: transparent;
+    border-color: var(--color-danger);
+    color: var(--color-danger);
   }
 
-  /* WoW-style input */
+  .btn-wow-danger:hover:not(:disabled) {
+    background-color: color-mix(in srgb, var(--color-danger) 18%, transparent);
+  }
+
+  .btn-wow-danger:disabled {
+    @apply opacity-40 cursor-not-allowed;
+  }
+
   .input-wow {
-    @apply w-full px-3 py-2 rounded;
-    @apply bg-dark-bg-secondary border border-dark-border;
-    @apply text-dark-text placeholder-dark-text-muted;
-    @apply focus:outline-none focus:border-wow-gold focus:ring-1 focus:ring-wow-gold/50;
-    @apply disabled:opacity-50 disabled:cursor-not-allowed;
+    @apply w-full px-3 py-2 rounded text-sm;
+    background-color: var(--color-input);
+    border: 1px solid var(--color-border);
+    color: var(--color-text);
   }
 
-  /* WoW-style select */
+  .input-wow::placeholder {
+    color: var(--color-text-muted);
+  }
+
+  .input-wow:focus {
+    outline: none;
+    border-color: var(--color-accent);
+    box-shadow: 0 0 0 1px var(--color-accent);
+  }
+
+  .input-wow:disabled {
+    @apply opacity-50 cursor-not-allowed;
+  }
+
   .select-wow {
     @apply input-wow appearance-none cursor-pointer;
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%239D9D9D'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E");
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%238b97ad'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E");
     background-repeat: no-repeat;
     background-position: right 0.5rem center;
     background-size: 1.5em 1.5em;
     padding-right: 2.5rem;
   }
 
-  /* WoW-style panel/card */
   .panel-wow {
-    @apply bg-dark-bg-secondary border border-dark-border rounded-lg;
-    @apply shadow-lg;
+    @apply rounded-lg border;
+    background-color: var(--color-surface);
+    border-color: var(--color-border);
+    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.25);
   }
 
-  /* WoW-style table */
   .table-wow {
     @apply w-full border-collapse;
   }
 
   .table-wow th {
-    @apply px-4 py-2 text-left text-wow-gold font-semibold;
-    @apply bg-dark-bg-tertiary border-b border-dark-border;
+    @apply px-4 py-2 text-left font-semibold text-sm;
+    background-color: var(--color-elevated);
+    color: var(--color-text);
+    border-bottom: 1px solid var(--color-border);
   }
 
   .table-wow td {
-    @apply px-4 py-2 border-b border-dark-border/50;
+    @apply px-4 py-2 text-sm;
+    border-bottom: 1px solid color-mix(in srgb, var(--color-border) 50%, transparent);
   }
 
   .table-wow tr:hover td {
-    @apply bg-dark-bg-tertiary/50;
+    background-color: color-mix(in srgb, var(--color-elevated) 50%, transparent);
   }
 
-  /* Tab styles */
   .tab-wow {
-    @apply px-4 py-2 font-semibold transition-all duration-200;
-    @apply text-dark-text-muted border-b-2 border-transparent;
-    @apply hover:text-dark-text hover:border-dark-border;
+    @apply px-4 py-2 font-semibold text-sm transition-colors duration-150;
+    color: var(--color-text-muted);
+    border-bottom: 2px solid transparent;
+    background: none;
+    border-top: none;
+    border-left: none;
+    border-right: none;
+    cursor: pointer;
+    margin-bottom: -1px;
+  }
+
+  .tab-wow:hover {
+    color: var(--color-text);
+    border-bottom-color: var(--color-border);
   }
 
   .tab-wow-active {
     @apply tab-wow;
-    @apply text-wow-gold border-wow-gold;
+    color: var(--color-accent);
+    border-bottom-color: var(--color-accent);
   }
 
-  /* Sidebar navigation */
   .nav-item {
-    @apply flex items-center gap-3 px-4 py-2 rounded;
-    @apply text-dark-text-muted transition-all duration-200;
-    @apply hover:bg-dark-bg-tertiary hover:text-dark-text;
+    @apply flex items-center gap-3 px-4 py-2 rounded transition-colors duration-150;
+    color: var(--color-text-muted);
+  }
+
+  .nav-item:hover {
+    background-color: var(--color-elevated);
+    color: var(--color-text);
   }
 
   .nav-item-active {
     @apply nav-item;
-    @apply bg-dark-bg-tertiary text-wow-gold;
+    background-color: var(--color-elevated);
+    color: var(--color-accent);
   }
 
-  /* Badge styles */
   .badge {
     @apply inline-flex items-center px-2 py-0.5 rounded text-xs font-medium;
   }
@@ -159,23 +219,26 @@
     @apply badge bg-wow-legendary/20 text-wow-legendary;
   }
 
-  /* Code/SQL editor styles */
   .editor-container {
     @apply relative w-full h-full;
   }
 
   .editor-gutter {
-    @apply bg-dark-bg-tertiary text-dark-text-muted text-right pr-2 select-none;
-    @apply font-mono text-sm leading-6;
+    @apply text-right pr-2 select-none font-mono text-sm leading-6;
+    background-color: var(--color-elevated);
+    color: var(--color-text-muted);
   }
 
   .editor-content {
-    @apply bg-dark-bg font-mono text-sm leading-6 p-2;
-    @apply focus:outline-none;
-    @apply whitespace-pre overflow-auto;
+    @apply font-mono text-sm leading-6 p-2 whitespace-pre overflow-auto;
+    background-color: var(--color-bg);
+    color: var(--color-text);
   }
 
-  /* Syntax highlighting */
+  .editor-content:focus {
+    outline: none;
+  }
+
   .syntax-keyword {
     @apply text-wow-purple;
   }
@@ -201,7 +264,6 @@
   }
 }
 
-/* Utility classes */
 @layer utilities {
   .text-shadow-wow {
     text-shadow: 0 0 10px currentColor;

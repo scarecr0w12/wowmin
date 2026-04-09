@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.2.3] - 2026-04-09
+
+### Added
+
+- Player inventory browsing from the **Players** tab, including in-app WoW-style item tooltips backed by `character_inventory`, `item_instance`, and `item_template`
+- Main-menu navigation shortcuts for quickly jumping between app tabs from the desktop shell
+
+### Improved
+
+- Main tab bar and database subtabs now expose better keyboard navigation and ARIA metadata for a more accessible desktop workflow
+- The app shell and database workspace received a broader visual refresh with cleaner semantic theme tokens and more consistent control states
+
+### Fixed
+
+- SOAP commands are now XML-escaped correctly and serialized one at a time to avoid malformed requests and timeout-prone concurrent worldserver calls
+
 ## [2.2.2] - 2026-04-03
 
 ### Added

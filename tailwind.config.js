@@ -9,7 +9,22 @@ module.exports = {
   theme: {
     extend: {
       colors: {
-        // WoW-inspired color palette
+        // App shell — matches renderer/styles.css :root tokens
+        app: {
+          bg: 'var(--color-bg)',
+          surface: 'var(--color-surface)',
+          elevated: 'var(--color-elevated)',
+          input: 'var(--color-input)',
+          output: 'var(--color-output)',
+          border: 'var(--color-border)',
+          text: 'var(--color-text)',
+          muted: 'var(--color-text-muted)',
+          accent: 'var(--color-accent)',
+          success: 'var(--color-success)',
+          danger: 'var(--color-danger)',
+          info: 'var(--color-info)',
+        },
+        // WoW-inspired palette (syntax highlighting, item quality badges)
         'wow': {
           'gold': '#FFD100',
           'gold-dark': '#C9A000',
@@ -34,14 +49,14 @@ module.exports = {
           'artifact': '#E6CC80',
           'heirloom': '#00CCFF',
         },
-        // Dark theme colors
+        // Aliased to CSS variables (same as app.*) for existing utility classes in HTML
         'dark': {
-          'bg': '#1a1a1a',
-          'bg-secondary': '#242424',
-          'bg-tertiary': '#2d2d2d',
-          'border': '#3d3d3d',
-          'text': '#e0e0e0',
-          'text-muted': '#9d9d9d',
+          'bg': 'var(--color-bg)',
+          'bg-secondary': 'var(--color-surface)',
+          'bg-tertiary': 'var(--color-elevated)',
+          'border': 'var(--color-border)',
+          'text': 'var(--color-text)',
+          'text-muted': 'var(--color-text-muted)',
         }
       },
       fontFamily: {

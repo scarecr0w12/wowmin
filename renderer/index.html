@@ -12,7 +12,7 @@
 <body>
 
   <!-- ─── Connection Panel ─── -->
-  <header id="connection-bar">
+  <header id="connection-bar" class="app-header">
     <div class="connection-row">
       <div class="profile-selector">
         <label>
@@ -49,21 +49,21 @@
   </header>
 
   <!-- ─── Tab Bar ─── -->
-  <nav id="tab-bar">
-    <button class="tab active" data-tab="dashboard">⊞ Dashboard</button>
-    <button class="tab" data-tab="players">☺ Players</button>
-    <button class="tab" data-tab="accounts">⚙ Accounts</button>
-    <button class="tab" data-tab="tickets">✉ Tickets</button>
-    <button class="tab" data-tab="database">🗄 Database</button>
-    <button class="tab" data-tab="map">🗺 Live Map</button>
-    <button class="tab" data-tab="logs">📜 Logs</button>
-    <button class="tab" data-tab="console">▸ Console</button>
+  <nav id="tab-bar" role="tablist" aria-label="Main sections">
+    <button type="button" role="tab" class="tab active" id="tab-btn-dashboard" data-tab="dashboard" aria-selected="true" aria-controls="tab-dashboard" tabindex="0" title="Dashboard (Alt+1)">⊞ Dashboard</button>
+    <button type="button" role="tab" class="tab" id="tab-btn-players" data-tab="players" aria-selected="false" aria-controls="tab-players" tabindex="-1" title="Players (Alt+2)">☺ Players</button>
+    <button type="button" role="tab" class="tab" id="tab-btn-accounts" data-tab="accounts" aria-selected="false" aria-controls="tab-accounts" tabindex="-1" title="Accounts (Alt+3)">⚙ Accounts</button>
+    <button type="button" role="tab" class="tab" id="tab-btn-tickets" data-tab="tickets" aria-selected="false" aria-controls="tab-tickets" tabindex="-1" title="Tickets (Alt+4)">✉ Tickets</button>
+    <button type="button" role="tab" class="tab" id="tab-btn-database" data-tab="database" aria-selected="false" aria-controls="tab-database" tabindex="-1" title="Database (Alt+5)">🗄 Database</button>
+    <button type="button" role="tab" class="tab" id="tab-btn-map" data-tab="map" aria-selected="false" aria-controls="tab-map" tabindex="-1" title="Live Map (Alt+6)">🗺 Live Map</button>
+    <button type="button" role="tab" class="tab" id="tab-btn-logs" data-tab="logs" aria-selected="false" aria-controls="tab-logs" tabindex="-1" title="Logs (Alt+7)">📜 Logs</button>
+    <button type="button" role="tab" class="tab" id="tab-btn-console" data-tab="console" aria-selected="false" aria-controls="tab-console" tabindex="-1" title="Console (Alt+8)">▸ Console</button>
   </nav>
 
   <!-- ═══════════════════════════════════════════════════════ -->
   <!-- TAB: Dashboard                                         -->
   <!-- ═══════════════════════════════════════════════════════ -->
-  <div id="tab-dashboard" class="tab-content active">
+  <div id="tab-dashboard" role="tabpanel" class="tab-content active" aria-labelledby="tab-btn-dashboard" aria-hidden="false">
     <div class="dashboard-grid">
 
       <!-- Server Info card -->
@@ -167,7 +167,7 @@
   <!-- ═══════════════════════════════════════════════════════ -->
   <!-- TAB: Players                                           -->
   <!-- ═══════════════════════════════════════════════════════ -->
-  <div id="tab-players" class="tab-content">
+  <div id="tab-players" role="tabpanel" class="tab-content" aria-labelledby="tab-btn-players" aria-hidden="true">
     <div class="panel-toolbar">
       <h2>Online Players</h2>
       <div class="toolbar-right">
@@ -259,6 +259,31 @@
       </div>
     </div>
 
+    <!-- Character inventory (characters DB + world item_template) -->
+    <div id="player-inventory-panel" class="player-inventory-panel hidden">
+      <div class="detail-header">
+        <h3 id="inventory-charname">Inventory</h3>
+        <button type="button" class="btn btn-tiny" id="inventory-close" title="Close">✕</button>
+      </div>
+      <div class="inventory-body">
+        <p class="inventory-hint">Uses your Live Map / characters database connection. World data is read from the matching world database (e.g. acore_world).</p>
+        <div class="table-container inventory-table-container">
+          <table class="inventory-table" id="inventory-table">
+            <thead>
+              <tr>
+                <th>Location</th>
+                <th>Item</th>
+                <th class="th-entry">#</th>
+              </tr>
+            </thead>
+            <tbody id="inventory-tbody">
+              <tr><td colspan="3" class="placeholder">Open from a player row (🎒).</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
     <!-- Player actions panel -->
     <div class="panel-toolbar" style="margin-top: 16px;">
       <h3>Player Action</h3>
@@ -333,7 +358,7 @@
   <!-- ═══════════════════════════════════════════════════════ -->
   <!-- TAB: Accounts                                          -->
   <!-- ═══════════════════════════════════════════════════════ -->
-  <div id="tab-accounts" class="tab-content">
+  <div id="tab-accounts" role="tabpanel" class="tab-content" aria-labelledby="tab-btn-accounts" aria-hidden="true">
     <div class="accounts-grid">
 
       <!-- Create Account -->
@@ -522,7 +547,7 @@
   <!-- ═══════════════════════════════════════════════════════ -->
   <!-- TAB: Tickets                                           -->
   <!-- ═════════════════════════════════════════════════════════ -->
-  <div id="tab-tickets" class="tab-content">
+  <div id="tab-tickets" role="tabpanel" class="tab-content" aria-labelledby="tab-btn-tickets" aria-hidden="true">
     <div class="panel-toolbar">
       <h2>GM Tickets</h2>
       <div class="toolbar-right">
@@ -641,12 +666,12 @@
   <!-- ═══════════════════════════════════════════════════════ -->
   <!-- TAB: Database                                           -->
   <!-- ═══════════════════════════════════════════════════════ -->
-  <div id="tab-database" class="tab-content">
+  <div id="tab-database" role="tabpanel" class="tab-content" aria-labelledby="tab-btn-database" aria-hidden="true">
     <div class="db-layout">
       <!-- Database Connection Sidebar -->
       <aside class="db-sidebar">
         <div class="db-connection-panel">
-          <h3 class="text-wow-gold font-semibold mb-3">Database Connection</h3>
+          <h3 class="section-heading mb-3">Database Connection</h3>
           
           <div class="db-connection-form">
             <label class="block mb-2">
@@ -689,16 +714,16 @@
             </div>
           </div>
           
-          <div id="db-connection-status" class="mt-3 p-2 rounded bg-dark-bg-tertiary text-sm">
+          <div id="db-connection-status" class="mt-3 p-2 text-sm bg-surface-elevated">
             <span class="text-dark-text-muted">Status:</span>
-            <span id="db-status-text" class="text-wow-red">Disconnected</span>
+            <span id="db-status-text" class="text-status-danger">Disconnected</span>
           </div>
         </div>
         
         <!-- Table Browser -->
         <div class="db-table-browser mt-4">
           <div class="flex items-center justify-between mb-2">
-            <h3 class="text-wow-gold font-semibold">Tables</h3>
+            <h3 class="section-heading">Tables</h3>
             <button id="db-refresh-tables" class="btn-wow text-xs px-2 py-1" disabled>⟳</button>
           </div>
           <input type="text" id="db-table-search" class="input-wow mb-2" placeholder="Search tables..." disabled />
@@ -711,14 +736,14 @@
       <!-- Main Database Content Area -->
       <main class="db-main">
         <!-- Database Sub-tabs -->
-        <div class="db-subtabs">
-          <button class="tab-wow-active" data-subtab="db-sql-editor">SQL Editor</button>
-          <button class="tab-wow" data-subtab="db-table-editor">Table Editor</button>
-          <button class="tab-wow" data-subtab="db-entity-editor">Entity Editor</button>
+        <div class="db-subtabs" role="tablist" aria-label="Database tools">
+          <button type="button" role="tab" class="active" id="db-subtab-btn-sql" data-subtab="db-sql-editor" aria-selected="true" aria-controls="db-sql-editor" tabindex="0">SQL Editor</button>
+          <button type="button" role="tab" id="db-subtab-btn-table" data-subtab="db-table-editor" aria-selected="false" aria-controls="db-table-editor" tabindex="-1">Table Editor</button>
+          <button type="button" role="tab" id="db-subtab-btn-entity" data-subtab="db-entity-editor" aria-selected="false" aria-controls="db-entity-editor" tabindex="-1">Entity Editor</button>
         </div>
         
         <!-- SQL Editor Subtab -->
-        <div id="db-sql-editor" class="db-subtab-content">
+        <div id="db-sql-editor" role="tabpanel" class="db-subtab-content" aria-labelledby="db-subtab-btn-sql" aria-hidden="false">
           <div class="db-editor-toolbar">
             <button id="sql-execute-btn" class="btn-wow-primary" disabled>▶ Execute</button>
             <button id="sql-execute-selected-btn" class="btn-wow" disabled>▶ Selected</button>
@@ -755,7 +780,7 @@ SELECT * FROM creature_template WHERE entry = 1;" spellcheck="false"></textarea>
         </div>
         
         <!-- Table Editor Subtab -->
-        <div id="db-table-editor" class="db-subtab-content hidden">
+        <div id="db-table-editor" role="tabpanel" class="db-subtab-content hidden" aria-labelledby="db-subtab-btn-table" aria-hidden="true">
           <div class="db-table-toolbar">
             <span class="text-dark-text-muted">Select a table from the sidebar to edit</span>
             <div class="flex-1"></div>
@@ -775,7 +800,7 @@ SELECT * FROM creature_template WHERE entry = 1;" spellcheck="false"></textarea>
         </div>
         
         <!-- Entity Editor Subtab -->
-        <div id="db-entity-editor" class="db-subtab-content hidden">
+        <div id="db-entity-editor" role="tabpanel" class="db-subtab-content hidden" aria-labelledby="db-subtab-btn-entity" aria-hidden="true">
           <!-- Selector / action bar -->
           <div class="db-entity-selector">
             <label style="display:flex;flex-direction:column;gap:4px;">
@@ -898,7 +923,7 @@ SELECT * FROM creature_template WHERE entry = 1;" spellcheck="false"></textarea>
 
   <!-- ═════════════════════════════════════════════════════════ -->
   <!-- TAB: Console                                            -->
-  <div id="tab-console" class="tab-content">
+  <div id="tab-console" role="tabpanel" class="tab-content" aria-labelledby="tab-btn-console" aria-hidden="true">
     <div class="console-layout">
       <aside id="sidebar">
         <h3>Quick Commands</h3>
@@ -1002,7 +1027,7 @@ SELECT * FROM creature_template WHERE entry = 1;" spellcheck="false"></textarea>
   <!-- ═══════════════════════════════════════════════════════ -->
   <!-- TAB: Live Map                                          -->
   <!-- ═══════════════════════════════════════════════════════ -->
-  <div id="tab-map" class="tab-content">
+  <div id="tab-map" role="tabpanel" class="tab-content" aria-labelledby="tab-btn-map" aria-hidden="true">
     <div class="map-layout">
 
       <!-- Sidebar: DB connection + player list -->
@@ -1108,7 +1133,7 @@ SELECT * FROM creature_template WHERE entry = 1;" spellcheck="false"></textarea>
   <!-- ═══════════════════════════════════════════════════════ -->
   <!-- TAB: Logs                                              -->
   <!-- ═══════════════════════════════════════════════════════ -->
-  <div id="tab-logs" class="tab-content">
+  <div id="tab-logs" role="tabpanel" class="tab-content" aria-labelledby="tab-btn-logs" aria-hidden="true">
     <div class="log-monitor-layout">
       <aside class="log-monitor-sidebar">
         <div class="card">
@@ -1203,6 +1228,9 @@ SELECT * FROM creature_template WHERE entry = 1;" spellcheck="false"></textarea>
   </div>
 
   <!-- ─── Modal Overlay ─── -->
+  <!-- WoW-style item tooltip (follows pointer while over inventory rows) -->
+  <div id="wow-tooltip" class="wow-tooltip hidden" aria-hidden="true"></div>
+
   <div id="modal-overlay" class="modal-overlay hidden">
     <div class="modal-dialog">
       <h3 id="modal-title">Title</h3>

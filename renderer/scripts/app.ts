@@ -2,7 +2,8 @@
 import { ts, escapeHtml, showResult, debounce, getMapName, getZoneName, CLASS_COLORS, RACE_ICONS, RACE_NAMES, CLASS_NAMES } from './utils/helpers';
 import { CONTINENT_BOUNDS, worldToCanvas } from './utils/map-coords';
 import { AppState, createInitialState, PlayerInfo } from './types/state';
-import type { ConnectionProfile, DbConfig, SoapConfig, UpdateCheckResult, EntityMediaPreviewResult, LogMonitorConfig, LogMonitorInspectionResult, LlmConfig, LlmTaskType, LlmChatContext, QueryResult, MapBotWaypoint } from '../../src/types/electron';
+import type { ConnectionProfile, DbConfig, SoapConfig, UpdateCheckResult, EntityMediaPreviewResult, LogMonitorConfig, LogMonitorInspectionResult, LlmConfig, LlmTaskType, LlmChatContext, QueryResult, MapBotWaypoint, CharacterInventoryResult } from '../../src/types/electron';
+import { bindInventoryTableTooltips, formatInventoryLocation, ITEM_QUALITY_COLOR } from './inventory/wow-item-tooltip';
 
 // ── Application State ────────────────────────────────────────────────────
 const state: AppState = createInitialState();
@@ -121,6 +122,8 @@ const $paAction = $<HTMLSelectElement>('pa-action');
 const $paExtra = $<HTMLInputElement>('pa-extra');
 const $paExtraLabel = $<HTMLLabelElement>('pa-extra-label');
 const $playerActionResult = $<HTMLElement>('player-action-result');
+
+let inventoryTooltipCleanup: (() => void) | null = null;
 
 // ── Modal Functions ───────────────────────────────────────────────────────
 interface ModalOptions {
@@ -468,20 +471,98 @@ async function refreshUpdateStatus(force = false): Promise<void> {
   }
 }
 
-// ── Tab Switching ──────────────────────────────────────────────────────────
-$$<HTMLButtonElement>('#tab-bar .tab').forEach((btn) => {
-  btn.addEventListener('click', () => {
-    $$<HTMLButtonElement>('#tab-bar .tab').forEach((t) => t.classList.remove('active'));
-    $$<HTMLElement>('.tab-content').forEach((c) => c.classList.remove('active'));
-    btn.classList.add('active');
-    const tabId = btn.dataset.tab;
-    if (tabId) {
-      const tabContent = $(`tab-${tabId}`);
-      tabContent?.classList.add('active');
-    }
+// ── Main tab navigation ─────────────────────────────────────────────────────
+const MAIN_TAB_ORDER = ['dashboard', 'players', 'accounts', 'tickets', 'database', 'map', 'logs', 'console'] as const;
+type MainTabId = (typeof MAIN_TAB_ORDER)[number];
 
-    syncLogFollowPolling();
+function isTypingTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false;
+  const tag = target.tagName;
+  if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return true;
+  return target.isContentEditable;
+}
+
+function getMainTabBarButtons(): HTMLButtonElement[] {
+  const bar = document.getElementById('tab-bar');
+  if (!bar) return [];
+  return Array.from(bar.querySelectorAll<HTMLButtonElement>('[role="tab"]'));
+}
+
+function getActiveMainTabId(): MainTabId {
+  const id = document.querySelector<HTMLButtonElement>('#tab-bar .tab.active')?.dataset.tab;
+  if (id && (MAIN_TAB_ORDER as readonly string[]).includes(id)) return id as MainTabId;
+  return 'dashboard';
+}
+
+function onMainTabActivated(tabId: MainTabId): void {
+  if (tabId === 'map') {
+    Object.keys(CONTINENT_BOUNDS).forEach((cid) => preloadMapImage(Number(cid)));
+    requestAnimationFrame(() => renderMapCanvas());
+  }
+}
+
+function activateMainTab(tabId: string, options?: { focusTab?: boolean }): void {
+  if (!(MAIN_TAB_ORDER as readonly string[]).includes(tabId)) return;
+  const typed = tabId as MainTabId;
+  const buttons = getMainTabBarButtons();
+  const panels = $$<HTMLElement>('.tab-content');
+
+  buttons.forEach((btn) => {
+    const id = btn.dataset.tab;
+    const selected = id === typed;
+    btn.classList.toggle('active', selected);
+    btn.setAttribute('aria-selected', selected ? 'true' : 'false');
+    btn.tabIndex = selected ? 0 : -1;
   });
+
+  panels.forEach((panel) => {
+    const pid = panel.id.startsWith('tab-') ? panel.id.slice(4) : '';
+    const selected = pid === typed;
+    panel.classList.toggle('active', selected);
+    panel.setAttribute('aria-hidden', selected ? 'false' : 'true');
+  });
+
+  if (options?.focusTab) {
+    document.querySelector<HTMLButtonElement>(`#tab-bar [data-tab="${typed}"]`)?.focus();
+  }
+
+  onMainTabActivated(typed);
+  syncLogFollowPolling();
+}
+
+// ── Tab Switching ──────────────────────────────────────────────────────────
+getMainTabBarButtons().forEach((btn) => {
+  btn.addEventListener('click', () => {
+    const id = btn.dataset.tab;
+    if (id) activateMainTab(id);
+  });
+});
+
+document.getElementById('tab-bar')?.addEventListener('keydown', (e) => {
+  if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight' && e.key !== 'Home' && e.key !== 'End') return;
+  const idx = MAIN_TAB_ORDER.indexOf(getActiveMainTabId());
+  let next = idx < 0 ? 0 : idx;
+  if (e.key === 'ArrowRight') next = (next + 1) % MAIN_TAB_ORDER.length;
+  else if (e.key === 'ArrowLeft') next = (next - 1 + MAIN_TAB_ORDER.length) % MAIN_TAB_ORDER.length;
+  else if (e.key === 'Home') next = 0;
+  else if (e.key === 'End') next = MAIN_TAB_ORDER.length - 1;
+  e.preventDefault();
+  activateMainTab(MAIN_TAB_ORDER[next], { focusTab: true });
+});
+
+document.addEventListener('keydown', (e) => {
+  if (!e.altKey || e.repeat || e.ctrlKey || e.metaKey) return;
+  if (isTypingTarget(e.target)) return;
+  const match = /^Digit(\d)$/.exec(e.code);
+  if (!match) return;
+  const digit = Number(match[1]);
+  if (digit < 1 || digit > MAIN_TAB_ORDER.length) return;
+  e.preventDefault();
+  activateMainTab(MAIN_TAB_ORDER[digit - 1], { focusTab: true });
+});
+
+window.electronAPI.app.onNavigateTab((tabId) => {
+  activateMainTab(tabId, { focusTab: true });
 });
 
 // ── Connection Handlers ────────────────────────────────────────────────────
@@ -931,6 +1012,7 @@ function renderPlayersTable(): void {
         <td class="td-ip">${escapeHtml(p.ip)}</td>
         <td class="td-actions">
           <button class="tbl-action" data-player-action="detail" data-charname="${escapeHtml(p.name)}" title="Detailed Info">🔍</button>
+          <button class="tbl-action" data-player-action="inventory" data-charname="${escapeHtml(p.name)}" title="Inventory (DB)">🎒</button>
           <button class="tbl-action" data-player-action="kick" data-charname="${escapeHtml(p.name)}" title="Kick">❌</button>
           <button class="tbl-action" data-player-action="mute" data-charname="${escapeHtml(p.name)}" title="Mute">🔇</button>
           <button class="tbl-action danger" data-player-action="ban account" data-charname="${escapeHtml(p.name)}" title="Ban">🚫</button>
@@ -1141,8 +1223,84 @@ async function showPlayerDetail(charname: string): Promise<void> {
   enrichPlayerFromPinfo(charname, r.message);
 }
 
+function renderInventoryTable(result: CharacterInventoryResult): void {
+  inventoryTooltipCleanup?.();
+  inventoryTooltipCleanup = null;
+  const tbody = $<HTMLElement>('inventory-tbody');
+  const tip = $<HTMLElement>('wow-tooltip');
+  if (!tbody || !tip) return;
+
+  if (result.items.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="3" class="placeholder">No items in character_inventory for this character.</td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = result.items
+    .map((it, i) => {
+      const loc = formatInventoryLocation(it, result.bagLabels);
+      const q = Math.min(7, Math.max(0, it.Quality));
+      const color = ITEM_QUALITY_COLOR[q] ?? ITEM_QUALITY_COLOR[1];
+      const nameHtml =
+        it.count > 1 ? `${escapeHtml(it.name)} <span class="inv-stack">×${it.count}</span>` : escapeHtml(it.name);
+      return `<tr class="inv-item-row" data-inv-idx="${i}">
+        <td class="inv-loc" title="${escapeHtml(loc)}">${escapeHtml(loc)}</td>
+        <td class="inv-name" style="color:${color}">${nameHtml}</td>
+        <td class="inv-entry mono">${it.itemEntry}</td>
+      </tr>`;
+    })
+    .join('');
+
+  inventoryTooltipCleanup = bindInventoryTableTooltips(tbody, tip, result.items);
+}
+
+async function openPlayerInventory(charName: string): Promise<void> {
+  const panel = $<HTMLElement>('player-inventory-panel');
+  const title = $<HTMLElement>('inventory-charname');
+  const tbody = $<HTMLElement>('inventory-tbody');
+  if (!panel || !title || !tbody) return;
+
+  panel.classList.remove('hidden');
+  title.textContent = `Inventory — ${charName}`;
+  tbody.innerHTML = `<tr><td colspan="3" class="placeholder">Loading inventory…</td></tr>`;
+  panel.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+
+  try {
+    const r = await window.electronAPI.inventory.getCharacterInventory(charName);
+    if (!r.success) {
+      inventoryTooltipCleanup?.();
+      inventoryTooltipCleanup = null;
+      tbody.innerHTML = `<tr><td colspan="3"><p class="action-result visible err">${escapeHtml(r.message)}</p></td></tr>`;
+      return;
+    }
+    renderInventoryTable(r);
+  } catch (err) {
+    inventoryTooltipCleanup?.();
+    inventoryTooltipCleanup = null;
+    const msg = err instanceof Error ? err.message : String(err);
+    tbody.innerHTML = `<tr><td colspan="3"><p class="action-result visible err">${escapeHtml(msg)}</p></td></tr>`;
+  }
+}
+
 $('detail-close')?.addEventListener('click', () => {
   $('player-detail-panel')?.classList.add('hidden');
+});
+
+$('inventory-close')?.addEventListener('click', () => {
+  inventoryTooltipCleanup?.();
+  inventoryTooltipCleanup = null;
+  $('player-inventory-panel')?.classList.add('hidden');
+  const tip = $<HTMLElement>('wow-tooltip');
+  if (tip) {
+    tip.classList.add('hidden');
+    tip.innerHTML = '';
+  }
+});
+
+$<HTMLElement>('wow-tooltip')?.addEventListener('click', (e) => {
+  const a = (e.target as HTMLElement).closest<HTMLAnchorElement>('a[data-external-url]');
+  if (!a?.dataset.externalUrl) return;
+  e.preventDefault();
+  void window.electronAPI.app.openExternal(a.dataset.externalUrl);
 });
 
 // ── Event delegation for player table action buttons ───────────────────────
@@ -1153,6 +1311,8 @@ $playersTbody?.addEventListener('click', (e) => {
   const charname = btn.dataset.charname ?? '';
   if (action === 'detail') {
     showPlayerDetail(charname);
+  } else if (action === 'inventory') {
+    void openPlayerInventory(charname);
   } else {
     runPlayerAction(action, charname);
   }
@@ -1886,7 +2046,7 @@ $dbConnectBtn?.addEventListener('click', async () => {
   try {
     $dbConnectBtn.disabled = true;
     $dbStatusText!.textContent = 'Connecting...';
-    $dbStatusText!.className = 'text-wow-gold';
+    $dbStatusText!.className = 'text-status-accent';
     
     const result = await window.electronAPI.db.connect(config);
     
@@ -1894,7 +2054,7 @@ $dbConnectBtn?.addEventListener('click', async () => {
       dbState.connected = true;
       dbState.database = result.database;
       $dbStatusText!.textContent = `Connected to ${result.database}`;
-      $dbStatusText!.className = 'text-wow-green db-status-connected';
+      $dbStatusText!.className = 'text-status-success db-status-connected';
       $dbConnectBtn.disabled = true;
       $dbDisconnectBtn!.disabled = false;
       $dbRefreshTables!.disabled = false;
@@ -1907,12 +2067,12 @@ $dbConnectBtn?.addEventListener('click', async () => {
       await loadDatabaseTables();
     } else {
       $dbStatusText!.textContent = `Error: ${result.error}`;
-      $dbStatusText!.className = 'text-wow-red db-status-error';
+      $dbStatusText!.className = 'text-status-danger db-status-error';
     }
   } catch (err) {
     const errorMsg = err instanceof Error ? err.message : String(err);
     $dbStatusText!.textContent = `Error: ${errorMsg}`;
-    $dbStatusText!.className = 'text-wow-red db-status-error';
+    $dbStatusText!.className = 'text-status-danger db-status-error';
   } finally {
     $dbConnectBtn.disabled = false;
   }
@@ -1928,7 +2088,7 @@ $dbDisconnectBtn?.addEventListener('click', async () => {
     dbState.currentTable = null;
     
     $dbStatusText!.textContent = 'Disconnected';
-    $dbStatusText!.className = 'text-wow-red db-status-disconnected';
+    $dbStatusText!.className = 'text-status-danger db-status-disconnected';
     $dbConnectBtn.disabled = false;
     $dbDisconnectBtn!.disabled = true;
     $dbRefreshTables!.disabled = true;
@@ -1955,7 +2115,7 @@ async function loadDatabaseTables(): Promise<void> {
     renderTableList(tables);
   } catch (err) {
     console.error('Error loading tables:', err);
-    $dbTableList!.innerHTML = '<p class="text-wow-red text-sm p-2">Error loading tables</p>';
+    $dbTableList!.innerHTML = '<p class="text-app-danger text-sm p-2">Error loading tables</p>';
   }
 }
 
@@ -2210,7 +2370,7 @@ async function executeSqlQuery(sql: string): Promise<void> {
       $sqlExportBtn!.disabled = false;
     } else if (result.affectedRows !== undefined) {
       $sqlResultInfo!.textContent = `${result.affectedRows} rows affected in ${duration}ms`;
-      $sqlResults!.innerHTML = `<p class="text-wow-green text-sm p-4">Query executed successfully. ${result.affectedRows} rows affected.</p>`;
+      $sqlResults!.innerHTML = `<p class="text-app-success text-sm p-4">Query executed successfully. ${result.affectedRows} rows affected.</p>`;
       $sqlExportBtn!.disabled = true;
     } else {
       $sqlResultInfo!.textContent = `Empty result set (${duration}ms)`;
@@ -2220,7 +2380,7 @@ async function executeSqlQuery(sql: string): Promise<void> {
   } catch (err) {
     const errorMsg = err instanceof Error ? err.message : String(err);
     $sqlResultInfo!.textContent = 'Error';
-    $sqlResults!.innerHTML = `<p class="text-wow-red text-sm p-4">Error: ${escapeHtml(errorMsg)}</p>`;
+    $sqlResults!.innerHTML = `<p class="text-app-danger text-sm p-4">Error: ${escapeHtml(errorMsg)}</p>`;
     $sqlExportBtn!.disabled = true;
   }
 }
@@ -2314,25 +2474,45 @@ $sqlExportBtn?.addEventListener('click', () => {
 
 // Database subtab switching
 function switchDbSubtab(subtabId: string): void {
-  // Update subtab buttons
-  document.querySelectorAll('.db-subtabs button').forEach(btn => {
-    btn.classList.toggle('active', btn.getAttribute('data-subtab') === subtabId);
+  document.querySelectorAll<HTMLButtonElement>('.db-subtabs [role="tab"]').forEach((btn) => {
+    const match = btn.getAttribute('data-subtab') === subtabId;
+    btn.classList.toggle('active', match);
+    btn.setAttribute('aria-selected', match ? 'true' : 'false');
+    btn.tabIndex = match ? 0 : -1;
   });
-  
-  // Update content panels
-  document.querySelectorAll('.db-subtab-content').forEach(panel => {
-    panel.classList.toggle('hidden', panel.id !== subtabId);
+
+  document.querySelectorAll<HTMLElement>('.db-subtab-content').forEach((panel) => {
+    const isSel = panel.id === subtabId;
+    panel.classList.toggle('hidden', !isSel);
+    panel.setAttribute('aria-hidden', isSel ? 'false' : 'true');
   });
 }
 
+const DB_SUBTAB_ORDER = ['db-sql-editor', 'db-table-editor', 'db-entity-editor'] as const;
+
 // Add click handlers for subtabs
-document.querySelectorAll('.db-subtabs button').forEach(btn => {
+document.querySelectorAll<HTMLButtonElement>('.db-subtabs [role="tab"]').forEach((btn) => {
   btn.addEventListener('click', () => {
     const subtabId = btn.getAttribute('data-subtab');
     if (subtabId) {
       switchDbSubtab(subtabId);
     }
   });
+});
+
+document.querySelector('.db-subtabs')?.addEventListener('keydown', (e) => {
+  if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+  const bar = e.currentTarget;
+  if (!(bar instanceof HTMLElement) || !(e.target instanceof Node) || !bar.contains(e.target)) return;
+  const current = bar.querySelector<HTMLButtonElement>('[role="tab"].active')?.getAttribute('data-subtab');
+  let idx = current ? DB_SUBTAB_ORDER.indexOf(current as (typeof DB_SUBTAB_ORDER)[number]) : 0;
+  if (idx < 0) idx = 0;
+  if (e.key === 'ArrowRight') idx = (idx + 1) % DB_SUBTAB_ORDER.length;
+  else idx = (idx - 1 + DB_SUBTAB_ORDER.length) % DB_SUBTAB_ORDER.length;
+  e.preventDefault();
+  const nextId = DB_SUBTAB_ORDER[idx];
+  switchDbSubtab(nextId);
+  bar.querySelector<HTMLButtonElement>(`[data-subtab="${nextId}"]`)?.focus();
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -2779,7 +2959,7 @@ async function runSelectorSearch(term: string): Promise<void> {
   } catch (error) {
     if (token !== dbState.selectorSearchToken) return;
     const message = error instanceof Error ? error.message : String(error);
-    $selectorResults.innerHTML = `<p class="text-wow-red text-sm p-4">Search failed: ${escapeHtml(message)}</p>`;
+    $selectorResults.innerHTML = `<p class="text-app-danger text-sm p-4">Search failed: ${escapeHtml(message)}</p>`;
   }
 }
 
@@ -3907,7 +4087,7 @@ async function loadEntityById(): Promise<void> {
       $entityDeleteBtn!.disabled = false;
       if ($entityApplySqlBtn) $entityApplySqlBtn.disabled = false;
     } else {
-      $entityEditorContent!.innerHTML = `<p class="text-wow-red text-sm p-4">No ${entityType} found with ID ${entityId}</p>`;
+      $entityEditorContent!.innerHTML = `<p class="text-app-danger text-sm p-4">No ${entityType} found with ID ${entityId}</p>`;
       $entitySaveBtn!.disabled = true;
       $entityDeleteBtn!.disabled = true;
       $entitySqlCode!.textContent = '-- No entity found';
@@ -3918,7 +4098,7 @@ async function loadEntityById(): Promise<void> {
     }
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    $entityEditorContent!.innerHTML = `<p class="text-wow-red text-sm p-4">Error: ${escapeHtml(msg)}</p>`;
+    $entityEditorContent!.innerHTML = `<p class="text-app-danger text-sm p-4">Error: ${escapeHtml(msg)}</p>`;
     dbState.entityCurrentData = null;
     dbState.entityOriginalData = null;
     updateEntityPreview();
@@ -4029,7 +4209,7 @@ $entitySaveBtn?.addEventListener('click', async () => {
     }
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    $entityEditorContent!.innerHTML = `<p class="text-wow-red text-sm p-4 mb-3">Error: ${escapeHtml(msg)}</p>` + $entityEditorContent!.innerHTML;
+    $entityEditorContent!.innerHTML = `<p class="text-app-danger text-sm p-4 mb-3">Error: ${escapeHtml(msg)}</p>` + $entityEditorContent!.innerHTML;
   }
 });
 
@@ -4044,7 +4224,7 @@ $entityDeleteBtn?.addEventListener('click', async () => {
   if (!confirmed) return;
   try {
     await window.electronAPI.db.execute(`DELETE FROM \`${cfg.table}\` WHERE \`${cfg.primaryKey}\` = ?`, [entityId]);
-    $entityEditorContent!.innerHTML = `<p class="text-wow-green text-sm p-4">✓ Entity deleted successfully.</p>`;
+    $entityEditorContent!.innerHTML = `<p class="text-app-success text-sm p-4">✓ Entity deleted successfully.</p>`;
     $entitySqlCode!.textContent = `DELETE FROM \`${cfg.table}\` WHERE \`${cfg.primaryKey}\` = ${entityId};`;
     $entitySaveBtn!.disabled = true;
     $entityDeleteBtn!.disabled = true;
@@ -4053,7 +4233,7 @@ $entityDeleteBtn?.addEventListener('click', async () => {
     dbState.entityCurrentData = null;
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    $entityEditorContent!.innerHTML = `<p class="text-wow-red text-sm p-4">Error: ${escapeHtml(msg)}</p>`;
+    $entityEditorContent!.innerHTML = `<p class="text-app-danger text-sm p-4">Error: ${escapeHtml(msg)}</p>`;
   }
 });
 
@@ -5040,13 +5220,6 @@ $mapFilterType?.addEventListener('change', () => {
   renderMapCanvas();
   renderMapPlayerList();
   renderMapSelectedPanel();
-});
-
-// Re-render canvas when switching to the map tab (size was 0 while hidden)
-document.querySelector<HTMLButtonElement>('[data-tab="map"]')?.addEventListener('click', () => {
-  // Preload images for all continents on first visit
-  Object.keys(CONTINENT_BOUNDS).forEach((id) => preloadMapImage(Number(id)));
-  requestAnimationFrame(() => renderMapCanvas());
 });
 
 // ResizeObserver keeps canvas sized correctly while the tab is visible
