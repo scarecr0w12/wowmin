@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.2.4] - 2026-04-09
+
+### Fixed
+
+- Restored the missing **Accounts** tab action handlers in the TypeScript renderer so account management forms no longer trigger native page submits that reset the UI back to the dashboard
+- Account creation, password changes, GM level updates, ban tools, online-account lookups, and addon-setting actions now stay in-app and execute through the SOAP command pipeline again
+
 ## [2.2.3] - 2026-04-09
 
 ### Added

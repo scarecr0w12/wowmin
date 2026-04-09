@@ -1406,6 +1406,170 @@ $paAction?.addEventListener('change', () => {
   }
 });
 
+// ── Accounts Tab ───────────────────────────────────────────────────────────
+$('create-account-form')?.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const user = $<HTMLInputElement>('ca-username')?.value.trim() ?? '';
+  const pass = $<HTMLInputElement>('ca-password')?.value.trim() ?? '';
+  const expansion = $<HTMLSelectElement>('ca-expansion')?.value ?? '2';
+  if (!user || !pass || !state.connected) return;
+
+  const result = await exec(`account create ${user} ${pass} ${pass}`);
+  const resultEl = $<HTMLElement>('create-account-result');
+  if (resultEl) showResult(resultEl, result.success, result.message || '(done)');
+
+  if (result.success) {
+    await exec(`account set addon ${user} ${expansion}`);
+  }
+
+  logActivity(`account create ${user}`, result.message || '(done)', result.success);
+});
+
+$('change-password-form')?.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const user = $<HTMLInputElement>('cp-username')?.value.trim() ?? '';
+  const pass = $<HTMLInputElement>('cp-password')?.value.trim() ?? '';
+  if (!user || !pass || !state.connected) return;
+
+  const result = await exec(`account set password ${user} ${pass} ${pass}`);
+  const resultEl = $<HTMLElement>('change-password-result');
+  if (resultEl) showResult(resultEl, result.success, result.message || '(done)');
+  logActivity(`account set password ${user}`, result.message || '(done)', result.success);
+});
+
+$('gm-level-form')?.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const user = $<HTMLInputElement>('gm-username')?.value.trim() ?? '';
+  const level = $<HTMLSelectElement>('gm-level')?.value ?? '0';
+  const realm = $<HTMLInputElement>('gm-realm')?.value.trim() || '-1';
+  if (!user || !state.connected) return;
+
+  const result = await exec(`account set gmlevel ${user} ${level} ${realm}`);
+  const resultEl = $<HTMLElement>('gm-level-result');
+  if (resultEl) showResult(resultEl, result.success, result.message || '(done)');
+  logActivity(`account set gmlevel ${user} ${level}`, result.message || '(done)', result.success);
+});
+
+$('account-lookup-form')?.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const user = $<HTMLInputElement>('al-username')?.value.trim() ?? '';
+  if (!user || !state.connected) return;
+
+  const result = await exec(`lookup account name ${user}`);
+  const resultEl = $<HTMLElement>('account-lookup-result');
+  if (resultEl) showResult(resultEl, result.success, result.message || 'No results.');
+  logActivity(`lookup account name ${user}`, result.message || '(done)', result.success);
+});
+
+$('ban-form')?.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const user = $<HTMLInputElement>('ban-username')?.value.trim() ?? '';
+  const duration = $<HTMLInputElement>('ban-duration')?.value.trim() || '0';
+  const reason = $<HTMLInputElement>('ban-reason')?.value.trim() || 'Admin action';
+  if (!user || !state.connected) return;
+
+  const result = await exec(`ban account ${user} ${duration} ${reason}`);
+  const resultEl = $<HTMLElement>('ban-result');
+  if (resultEl) showResult(resultEl, result.success, result.message || '(done)');
+  logActivity(`ban account ${user}`, result.message || '(done)', result.success);
+});
+
+$('btn-unban')?.addEventListener('click', async () => {
+  const user = $<HTMLInputElement>('ban-username')?.value.trim() ?? '';
+  if (!user || !state.connected) return;
+
+  const result = await exec(`unban account ${user}`);
+  const resultEl = $<HTMLElement>('ban-result');
+  if (resultEl) showResult(resultEl, result.success, result.message || '(done)');
+  logActivity(`unban account ${user}`, result.message || '(done)', result.success);
+});
+
+$('btn-online-accounts')?.addEventListener('click', async () => {
+  if (!state.connected) return;
+
+  const result = await exec('account onlinelist');
+  const resultEl = $<HTMLElement>('online-accounts-result');
+  if (resultEl) showResult(resultEl, result.success, result.message || 'No accounts online.');
+  logActivity('account onlinelist', result.message || '(done)', result.success);
+});
+
+$('delete-account-form')?.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const user = $<HTMLInputElement>('da-username')?.value.trim() ?? '';
+  if (!user || !state.connected) return;
+
+  const confirmed = await showModal({
+    title: 'Delete Account',
+    message: `Permanently delete account "${user}" and ALL its characters?`,
+  });
+  if (!confirmed) return;
+
+  const result = await exec(`account delete ${user}`);
+  const resultEl = $<HTMLElement>('delete-account-result');
+  if (resultEl) showResult(resultEl, result.success, result.message || '(done)');
+  logActivity(`account delete ${user}`, result.message || '(done)', result.success);
+});
+
+$('baninfo-form')?.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const type = $<HTMLSelectElement>('bi-type')?.value ?? 'account';
+  const target = $<HTMLInputElement>('bi-target')?.value.trim() ?? '';
+  if (!target || !state.connected) return;
+
+  const result = await exec(`baninfo ${type} ${target}`);
+  const resultEl = $<HTMLElement>('baninfo-result');
+  if (resultEl) showResult(resultEl, result.success, result.message || 'No ban info found.');
+  logActivity(`baninfo ${type} ${target}`, result.message || '(done)', result.success);
+});
+
+$('banlist-form')?.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const type = $<HTMLSelectElement>('bl-type')?.value ?? 'account';
+  const filter = $<HTMLInputElement>('bl-filter')?.value.trim() ?? '';
+  if (!state.connected) return;
+
+  const cmd = filter ? `banlist ${type} ${filter}` : `banlist ${type}`;
+  const result = await exec(cmd);
+  const resultEl = $<HTMLElement>('banlist-result');
+  if (resultEl) showResult(resultEl, result.success, result.message || 'No bans found.');
+  logActivity(cmd, result.message || '(done)', result.success);
+});
+
+$('ip-ban-form')?.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const ip = $<HTMLInputElement>('ipban-ip')?.value.trim() ?? '';
+  const duration = $<HTMLInputElement>('ipban-duration')?.value.trim() || '0';
+  const reason = $<HTMLInputElement>('ipban-reason')?.value.trim() || 'Admin action';
+  if (!ip || !state.connected) return;
+
+  const result = await exec(`ban ip ${ip} ${duration} ${reason}`);
+  const resultEl = $<HTMLElement>('ip-ban-result');
+  if (resultEl) showResult(resultEl, result.success, result.message || '(done)');
+  logActivity(`ban ip ${ip}`, result.message || '(done)', result.success);
+});
+
+$('btn-unban-ip')?.addEventListener('click', async () => {
+  const ip = $<HTMLInputElement>('ipban-ip')?.value.trim() ?? '';
+  if (!ip || !state.connected) return;
+
+  const result = await exec(`unban ip ${ip}`);
+  const resultEl = $<HTMLElement>('ip-ban-result');
+  if (resultEl) showResult(resultEl, result.success, result.message || '(done)');
+  logActivity(`unban ip ${ip}`, result.message || '(done)', result.success);
+});
+
+$('set-addon-form')?.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const user = $<HTMLInputElement>('sa-username')?.value.trim() ?? '';
+  const addon = $<HTMLSelectElement>('sa-addon')?.value ?? '2';
+  if (!user || !state.connected) return;
+
+  const result = await exec(`account set addon ${user} ${addon}`);
+  const resultEl = $<HTMLElement>('set-addon-result');
+  if (resultEl) showResult(resultEl, result.success, result.message || '(done)');
+  logActivity(`account set addon ${user} ${addon}`, result.message || '(done)', result.success);
+});
+
 // ── Profile Management ─────────────────────────────────────────────────────
 async function loadProfiles(): Promise<void> {
   try {
