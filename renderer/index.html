@@ -3,64 +3,94 @@
 <head>
   <meta charset="UTF-8" />
   <meta http-equiv="Content-Security-Policy"
-      content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'; img-src 'self' https: data:" />
+      content="default-src 'self' https://fonts.googleapis.com https://fonts.gstatic.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; script-src 'self'; img-src 'self' https: data:" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>WoW Admin – AzerothCore SOAP Console</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="styles.css" />
   <link rel="stylesheet" href="styles/output.css" />
 </head>
 <body>
 
-  <!-- ─── Connection Panel ─── -->
-  <header id="connection-bar" class="app-header">
-    <div class="connection-row">
-      <div class="profile-selector">
-        <label>
-          Profile
-          <select id="profile-select">
-            <option value="">— Select profile —</option>
-          </select>
-        </label>
-        <button id="btn-save-profile" class="btn btn-small" title="Save current fields as new profile">＋ Save</button>
-        <button id="btn-update-profile" class="btn btn-small" title="Update selected profile" disabled>✎ Update</button>
-        <button id="btn-delete-profile" class="btn btn-small btn-danger" title="Delete selected profile" disabled>✕</button>
+  <aside id="sidebar" class="app-sidebar">
+    <div class="sidebar-header">
+      <div class="sidebar-brand">
+        <span class="brand-icon">⚡</span>
+        <h1>WoW Admin</h1>
       </div>
-      <div class="connection-fields">
-        <label>Host <input type="text" id="host" value="127.0.0.1" /></label>
-        <label>Port <input type="number" id="port" value="7878" /></label>
-        <label>Username <input type="text" id="username" placeholder="soap user" /></label>
-        <label>Password <input type="password" id="password" placeholder="password" /></label>
-        <button id="btn-connect" class="btn btn-connect">Connect</button>
-        <button id="btn-disconnect" class="btn btn-disconnect" disabled>Disconnect</button>
-      </div>
+      <div id="status-indicator" class="status disconnected">Disconnected</div>
     </div>
-    <div id="status-indicator" class="status disconnected">Disconnected</div>
-    <div id="update-banner" class="update-banner" data-status="checking">
-      <div class="update-banner-copy">
-        <span class="update-banner-label">App</span>
-        <span id="app-version" class="update-banner-version">v--</span>
-        <span id="update-status-text" class="update-banner-text">Checking GitHub for updates…</span>
-      </div>
-      <div class="update-banner-actions">
-        <button id="btn-check-updates" class="btn btn-small" title="Check GitHub for a newer release">⟳ Check</button>
-        <button id="btn-open-update" class="btn btn-small hidden" title="Open the latest GitHub release">↗ Open Release</button>
-      </div>
-    </div>
-  </header>
+    
+    <nav id="tab-bar" class="sidebar-nav" role="tablist" aria-label="Main sections">
+      <button type="button" role="tab" class="tab active" id="tab-btn-dashboard" data-tab="dashboard" aria-selected="true" aria-controls="tab-dashboard" tabindex="0" title="Dashboard (Alt+1)">
+        <span class="tab-icon">⊞</span> <span class="tab-label">Dashboard</span>
+      </button>
+      <button type="button" role="tab" class="tab" id="tab-btn-players" data-tab="players" aria-selected="false" aria-controls="tab-players" tabindex="-1" title="Players (Alt+2)">
+        <span class="tab-icon">☺</span> <span class="tab-label">Players</span>
+      </button>
+      <button type="button" role="tab" class="tab" id="tab-btn-accounts" data-tab="accounts" aria-selected="false" aria-controls="tab-accounts" tabindex="-1" title="Accounts (Alt+3)">
+        <span class="tab-icon">⚙</span> <span class="tab-label">Accounts</span>
+      </button>
+      <button type="button" role="tab" class="tab" id="tab-btn-tickets" data-tab="tickets" aria-selected="false" aria-controls="tab-tickets" tabindex="-1" title="Tickets (Alt+4)">
+        <span class="tab-icon">✉</span> <span class="tab-label">Tickets</span>
+      </button>
+      <button type="button" role="tab" class="tab" id="tab-btn-database" data-tab="database" aria-selected="false" aria-controls="tab-database" tabindex="-1" title="Database (Alt+5)">
+        <span class="tab-icon">🗄</span> <span class="tab-label">Database</span>
+      </button>
+      <button type="button" role="tab" class="tab" id="tab-btn-map" data-tab="map" aria-selected="false" aria-controls="tab-map" tabindex="-1" title="Live Map (Alt+6)">
+        <span class="tab-icon">🗺</span> <span class="tab-label">Live Map</span>
+      </button>
+      <button type="button" role="tab" class="tab" id="tab-btn-logs" data-tab="logs" aria-selected="false" aria-controls="tab-logs" tabindex="-1" title="Logs (Alt+7)">
+        <span class="tab-icon">📜</span> <span class="tab-label">Logs</span>
+      </button>
+      <button type="button" role="tab" class="tab" id="tab-btn-console" data-tab="console" aria-selected="false" aria-controls="tab-console" tabindex="-1" title="Console (Alt+8)">
+        <span class="tab-icon">▸</span> <span class="tab-label">Console</span>
+      </button>
+    </nav>
+  </aside>
 
-  <!-- ─── Tab Bar ─── -->
-  <nav id="tab-bar" role="tablist" aria-label="Main sections">
-    <button type="button" role="tab" class="tab active" id="tab-btn-dashboard" data-tab="dashboard" aria-selected="true" aria-controls="tab-dashboard" tabindex="0" title="Dashboard (Alt+1)">⊞ Dashboard</button>
-    <button type="button" role="tab" class="tab" id="tab-btn-players" data-tab="players" aria-selected="false" aria-controls="tab-players" tabindex="-1" title="Players (Alt+2)">☺ Players</button>
-    <button type="button" role="tab" class="tab" id="tab-btn-accounts" data-tab="accounts" aria-selected="false" aria-controls="tab-accounts" tabindex="-1" title="Accounts (Alt+3)">⚙ Accounts</button>
-    <button type="button" role="tab" class="tab" id="tab-btn-tickets" data-tab="tickets" aria-selected="false" aria-controls="tab-tickets" tabindex="-1" title="Tickets (Alt+4)">✉ Tickets</button>
-    <button type="button" role="tab" class="tab" id="tab-btn-database" data-tab="database" aria-selected="false" aria-controls="tab-database" tabindex="-1" title="Database (Alt+5)">🗄 Database</button>
-    <button type="button" role="tab" class="tab" id="tab-btn-map" data-tab="map" aria-selected="false" aria-controls="tab-map" tabindex="-1" title="Live Map (Alt+6)">🗺 Live Map</button>
-    <button type="button" role="tab" class="tab" id="tab-btn-logs" data-tab="logs" aria-selected="false" aria-controls="tab-logs" tabindex="-1" title="Logs (Alt+7)">📜 Logs</button>
-    <button type="button" role="tab" class="tab" id="tab-btn-console" data-tab="console" aria-selected="false" aria-controls="tab-console" tabindex="-1" title="Console (Alt+8)">▸ Console</button>
-  </nav>
+  <main class="app-main">
+    <!-- ─── Connection Panel ─── -->
+    <header id="connection-bar" class="app-header glass-header">
+      <div class="connection-row">
+        <div class="profile-selector">
+          <label>
+            Profile
+            <select id="profile-select">
+              <option value="">— Select profile —</option>
+            </select>
+          </label>
+          <button id="btn-save-profile" class="btn btn-small" title="Save current fields as new profile">＋ Save</button>
+          <button id="btn-update-profile" class="btn btn-small" title="Update selected profile" disabled>✎ Update</button>
+          <button id="btn-delete-profile" class="btn btn-small btn-danger" title="Delete selected profile" disabled>✕</button>
+        </div>
+        <div class="connection-fields">
+          <label>Host <input type="text" id="host" value="127.0.0.1" /></label>
+          <label>Port <input type="number" id="port" value="7878" /></label>
+          <label>Username <input type="text" id="username" placeholder="soap user" /></label>
+          <label>Password <input type="password" id="password" placeholder="password" /></label>
+          <button id="btn-connect" class="btn btn-connect">Connect</button>
+          <button id="btn-disconnect" class="btn btn-disconnect" disabled>Disconnect</button>
+        </div>
+      </div>
+      
+      <div id="update-banner" class="update-banner" data-status="checking">
+        <div class="update-banner-copy">
+          <span class="update-banner-label">App</span>
+          <span id="app-version" class="update-banner-version">v--</span>
+          <span id="update-status-text" class="update-banner-text">Checking GitHub for updates…</span>
+        </div>
+        <div class="update-banner-actions">
+          <button id="btn-check-updates" class="btn btn-small" title="Check GitHub for a newer release">⟳ Check</button>
+          <button id="btn-open-update" class="btn btn-small hidden" title="Open the latest GitHub release">↗ Open Release</button>
+        </div>
+      </div>
+    </header>
 
-  <!-- ═══════════════════════════════════════════════════════ -->
+    <div class="content-area">
+<!-- ═══════════════════════════════════════════════════════ -->
   <!-- TAB: Dashboard                                         -->
   <!-- ═══════════════════════════════════════════════════════ -->
   <div id="tab-dashboard" role="tabpanel" class="tab-content active" aria-labelledby="tab-btn-dashboard" aria-hidden="false">
@@ -1226,6 +1256,8 @@ SELECT * FROM creature_template WHERE entry = 1;" spellcheck="false"></textarea>
       </main>
     </div>
   </div>
+
+    </div></main>
 
   <!-- ─── Modal Overlay ─── -->
   <!-- WoW-style item tooltip (follows pointer while over inventory rows) -->

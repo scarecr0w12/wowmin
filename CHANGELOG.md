@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.3.0] - 2026-04-13
+
+### Changed
+
+- Replaced the horizontal top tab bar with a persistent left-hand **sidebar navigation** panel, giving more vertical space to content areas and matching a modern dashboard layout
+- Sidebar shows the WoW Admin brand, connection status indicator, and all navigation tabs as a vertical list with icons and labels
+- Connection panel moved into a top header within the main content area with a glassmorphism backdrop for a cleaner, floating appearance
+- Updated font stack to **Inter** (UI) and **JetBrains Mono** (code/console), loaded via Google Fonts for a premium modern feel
+- Sidebar navigation tabs now feature a sliding hover animation, gold left-border active indicator, and smooth gradient highlight on the active item
+- Cards and panels now use deeper box shadows to create stronger visual depth against the darker background
+
+### Fixed
+
+- `npm run start` and `npm run dev` now launch on Linux without requiring `chrome-sandbox` to be setuid root, by passing `--no-sandbox` to the Electron process
+
 ## [2.2.4] - 2026-04-09
 
 ### Fixed

@@ -1,6 +1,6 @@
 {
   "name": "wow-admin",
-  "version": "2.2.4",
+  "version": "2.3.0",
   "description": "Desktop admin tool for AzerothCore servers with SOAP and Database editing",
   "main": "dist/main.js",
   "scripts": {
@@ -9,8 +9,8 @@
     "build:css": "tailwindcss -i ./renderer/styles/tailwind.css -o ./renderer/styles/output.css",
     "build:css:watch": "tailwindcss -i ./renderer/styles/tailwind.css -o ./renderer/styles/output.css --watch",
     "extract:maps": "node scripts/extract-map-assets.mjs",
-    "start": "npm run build:ts && npm run build:css && electron .",
-    "dev": "npm run build:ts && npm run build:css && electron . --dev",
+    "start": "npm run build:ts && npm run build:css && electron . --no-sandbox",
+    "dev": "npm run build:ts && npm run build:css && electron . --dev --no-sandbox",
     "build": "npm run build:ts && npm run build:css && node scripts/package.js",
     "build:win": "npm run build:ts && npm run build:css && node scripts/package.js --win",
     "build:mac": "npm run build:ts && npm run build:css && node scripts/package.js --mac",
