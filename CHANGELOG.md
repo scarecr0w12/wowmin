@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.4.0] - 2026-04-20
+
+### Added
+
+- New **Economy** tab for monitoring the in-game economy from the desktop client
+- Auction house lookup with live listing search by item name, item entry, or owner name
+- Character wealth lookup for checking individual player gold directly from the connected characters database
+- Market summary view with per-item average unit buyout, listing counts, total quantity, and min/max unit pricing
+- Economy database settings now persist inside connection profiles alongside SOAP, database, live-map, and log-monitor settings
+
+### Fixed
+
+- Economy market summary and auction lookups no longer fail with MySQL prepared-statement argument mismatches when search filters are applied
+
 ## [2.3.0] - 2026-04-13
 
 ### Changed

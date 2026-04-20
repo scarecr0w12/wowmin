@@ -128,6 +128,59 @@ export interface CharacterInventoryResult {
   bagLabels: Record<string, string>;
 }
 
+export interface EconomyOverview {
+  totalAuctions: number;
+  uniqueAuctionItems: number;
+  totalListedQuantity: number;
+  totalBuyoutValue: number;
+  averageListingBuyout: number;
+  averageUnitBuyout: number;
+  totalCharacters: number;
+  totalCharacterGold: number;
+  averageCharacterGold: number;
+  richestCharacterName: string | null;
+  richestCharacterGold: number;
+}
+
+export interface EconomyCharacterGoldResult {
+  found: boolean;
+  characterName: string;
+  level: number | null;
+  race: number | null;
+  class: number | null;
+  money: number;
+  online: boolean;
+  accountId: number | null;
+}
+
+export interface EconomyAuctionRow {
+  auctionId: number;
+  itemEntry: number;
+  itemName: string;
+  quality: number;
+  ownerName: string;
+  bidderName: string | null;
+  stackSize: number;
+  startBid: number;
+  currentBid: number;
+  buyoutPrice: number;
+  deposit: number;
+  houseId: number;
+  expiresAt: number;
+}
+
+export interface EconomyMarketSummaryRow {
+  itemEntry: number;
+  itemName: string;
+  quality: number;
+  listingCount: number;
+  totalQuantity: number;
+  averageListingBuyout: number;
+  averageUnitBuyout: number;
+  minimumUnitBuyout: number;
+  maximumUnitBuyout: number;
+}
+
 // ── SOAP Types ────────────────────────────────────────────────────────────
 
 export interface SoapConfig {
@@ -250,6 +303,7 @@ export interface ConnectionProfile {
   soapConfig: SoapConfig;
   databaseConfig: DbConfig;
   mapDatabaseConfig: DbConfig;
+  economyDatabaseConfig: DbConfig;
   logMonitorConfig: LogMonitorConfig;
   createdAt: string;
   updatedAt: string;
@@ -287,6 +341,13 @@ export type IpcChannels = {
   'map:disconnect': () => void;
   'map:getPlayerPositions': () => MapPlayerPosition[];
   'map:getBotWaypoint': (request: MapBotWaypointRequest) => MapBotWaypoint | null;
+
+  'economy:connect': (config: DbConfig) => DbConnectionState;
+  'economy:disconnect': () => void;
+  'economy:getOverview': () => EconomyOverview;
+  'economy:getCharacterGold': (characterName: string) => EconomyCharacterGoldResult;
+  'economy:searchAuctions': (searchTerm?: string, limit?: number) => EconomyAuctionRow[];
+  'economy:getMarketSummary': (searchTerm?: string, limit?: number) => EconomyMarketSummaryRow[];
 
   'inventory:getCharacterInventory': (characterName: string) => CharacterInventoryResult;
 

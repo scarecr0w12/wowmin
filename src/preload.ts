@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron';
-import { SoapConfig, SoapResult, DbConfig, DbConnectionState, QueryResult, FieldInfo, ConnectionProfile, UpdateCheckResult, EntityMediaPreviewRequest, EntityMediaPreviewResult, LogMonitorConfig, LogMonitorInspectionResult, LogMonitorFileTailResult, LlmChatRequest, LlmChatResponse, MapPlayerPosition, MapBotWaypointRequest, MapBotWaypoint, CharacterInventoryResult } from './types/electron';
+import { SoapConfig, SoapResult, DbConfig, DbConnectionState, QueryResult, FieldInfo, ConnectionProfile, UpdateCheckResult, EntityMediaPreviewRequest, EntityMediaPreviewResult, LogMonitorConfig, LogMonitorInspectionResult, LogMonitorFileTailResult, MapPlayerPosition, MapBotWaypointRequest, MapBotWaypoint, CharacterInventoryResult, EconomyOverview, EconomyCharacterGoldResult, EconomyAuctionRow, EconomyMarketSummaryRow } from './types/electron';
 
 // Type-safe IPC wrapper for renderer process
 const electronAPI = {
@@ -80,6 +80,21 @@ const electronAPI = {
       ipcRenderer.invoke('map:getPlayerPositions'),
     getBotWaypoint: (request: MapBotWaypointRequest): Promise<MapBotWaypoint | null> =>
       ipcRenderer.invoke('map:getBotWaypoint', request),
+  },
+
+  economy: {
+    connect: (config: DbConfig): Promise<DbConnectionState> =>
+      ipcRenderer.invoke('economy:connect', config),
+    disconnect: (): Promise<void> =>
+      ipcRenderer.invoke('economy:disconnect'),
+    getOverview: (): Promise<EconomyOverview> =>
+      ipcRenderer.invoke('economy:getOverview'),
+    getCharacterGold: (characterName: string): Promise<EconomyCharacterGoldResult> =>
+      ipcRenderer.invoke('economy:getCharacterGold', characterName),
+    searchAuctions: (searchTerm = '', limit = 50): Promise<EconomyAuctionRow[]> =>
+      ipcRenderer.invoke('economy:searchAuctions', searchTerm, limit),
+    getMarketSummary: (searchTerm = '', limit = 25): Promise<EconomyMarketSummaryRow[]> =>
+      ipcRenderer.invoke('economy:getMarketSummary', searchTerm, limit),
   },
 
   inventory: {

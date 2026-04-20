@@ -168,6 +168,11 @@ export class ConfigStore {
       legacyDbConfig ? { ...legacyDbConfig, database: 'acore_characters' } : undefined,
       'acore_characters',
     );
+    const economyDatabaseConfig = this.normalizeDbConfig(
+      profile.economyDatabaseConfig,
+      legacyDbConfig ? { ...legacyDbConfig, database: 'acore_characters' } : undefined,
+      'acore_characters',
+    );
     const logMonitorConfig = this.normalizeLogMonitorConfig(profile.logMonitorConfig, legacySoapConfig);
 
     return {
@@ -178,6 +183,7 @@ export class ConfigStore {
       soapConfig,
       databaseConfig,
       mapDatabaseConfig,
+      economyDatabaseConfig,
       logMonitorConfig,
       createdAt: profile.createdAt || new Date().toISOString(),
       updatedAt: profile.updatedAt || new Date().toISOString(),

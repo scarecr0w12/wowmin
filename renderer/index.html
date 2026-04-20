@@ -42,10 +42,13 @@
       <button type="button" role="tab" class="tab" id="tab-btn-map" data-tab="map" aria-selected="false" aria-controls="tab-map" tabindex="-1" title="Live Map (Alt+6)">
         <span class="tab-icon">🗺</span> <span class="tab-label">Live Map</span>
       </button>
-      <button type="button" role="tab" class="tab" id="tab-btn-logs" data-tab="logs" aria-selected="false" aria-controls="tab-logs" tabindex="-1" title="Logs (Alt+7)">
+      <button type="button" role="tab" class="tab" id="tab-btn-economy" data-tab="economy" aria-selected="false" aria-controls="tab-economy" tabindex="-1" title="Economy (Alt+7)">
+        <span class="tab-icon">💰</span> <span class="tab-label">Economy</span>
+      </button>
+      <button type="button" role="tab" class="tab" id="tab-btn-logs" data-tab="logs" aria-selected="false" aria-controls="tab-logs" tabindex="-1" title="Logs (Alt+8)">
         <span class="tab-icon">📜</span> <span class="tab-label">Logs</span>
       </button>
-      <button type="button" role="tab" class="tab" id="tab-btn-console" data-tab="console" aria-selected="false" aria-controls="tab-console" tabindex="-1" title="Console (Alt+8)">
+      <button type="button" role="tab" class="tab" id="tab-btn-console" data-tab="console" aria-selected="false" aria-controls="tab-console" tabindex="-1" title="Console (Alt+9)">
         <span class="tab-icon">▸</span> <span class="tab-label">Console</span>
       </button>
     </nav>
@@ -1157,6 +1160,118 @@ SELECT * FROM creature_template WHERE entry = 1;" spellcheck="false"></textarea>
         </div>
       </div>
 
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════ -->
+  <!-- TAB: Economy                                           -->
+  <!-- ═══════════════════════════════════════════════════════ -->
+  <div id="tab-economy" role="tabpanel" class="tab-content" aria-labelledby="tab-btn-economy" aria-hidden="true">
+    <div class="economy-layout">
+      <aside class="economy-sidebar">
+        <div class="card">
+          <div class="card-header"><h3>Economy Database</h3></div>
+          <div class="card-body">
+            <div class="form-stack">
+              <label>Host <input type="text" id="economy-db-host" value="127.0.0.1" /></label>
+              <label>Port <input type="number" id="economy-db-port" value="3306" /></label>
+              <label>User <input type="text" id="economy-db-user" value="acore" /></label>
+              <label>Password <input type="password" id="economy-db-pass" /></label>
+              <label>Characters DB <input type="text" id="economy-db-name" value="acore_characters" /></label>
+              <label>Derived World DB <input type="text" id="economy-world-db-name" value="acore_world" readonly /></label>
+              <div class="btn-row" style="margin-top:8px">
+                <button id="economy-db-connect-btn" class="btn btn-accent">Connect</button>
+                <button id="economy-db-disconnect-btn" class="btn" disabled>Disconnect</button>
+              </div>
+              <div id="economy-db-status" class="action-result"></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card" style="margin-top:10px">
+          <div class="card-header"><h3>Market Controls</h3></div>
+          <div class="card-body">
+            <div class="form-stack">
+              <label>Search Auctions / Items
+                <input type="text" id="economy-search-term" placeholder="item name, item ID, or owner" />
+              </label>
+              <label>Result Limit
+                <select id="economy-result-limit">
+                  <option value="10">10</option>
+                  <option value="25" selected>25</option>
+                  <option value="50">50</option>
+                  <option value="100">100</option>
+                </select>
+              </label>
+              <div class="btn-row">
+                <button id="economy-run-search-btn" class="btn btn-accent">Search</button>
+                <button id="economy-refresh-btn" class="btn">Refresh Overview</button>
+              </div>
+              <p class="economy-help-text">Uses the characters database for auctions and gold, plus the matching world database for item names and quality.</p>
+            </div>
+          </div>
+        </div>
+      </aside>
+
+      <main class="economy-main">
+        <div class="economy-summary-grid">
+          <div class="card">
+            <div class="card-header"><h3>Active Auctions</h3></div>
+            <div class="card-body center"><span class="big-stat accent" id="economy-total-auctions">--</span></div>
+          </div>
+          <div class="card">
+            <div class="card-header"><h3>Unique Items</h3></div>
+            <div class="card-body center"><span class="big-stat" id="economy-unique-items">--</span></div>
+          </div>
+          <div class="card">
+            <div class="card-header"><h3>Avg Unit Buyout</h3></div>
+            <div class="card-body center"><span class="big-stat" id="economy-avg-unit-buyout">--</span></div>
+          </div>
+          <div class="card">
+            <div class="card-header"><h3>Total Realm Gold</h3></div>
+            <div class="card-body center"><span class="big-stat accent" id="economy-total-gold">--</span></div>
+          </div>
+          <div class="card card-wide">
+            <div class="card-header"><h3>Market Snapshot</h3></div>
+            <div class="card-body" id="economy-overview-note">
+              <p class="placeholder">Connect to the characters database to inspect the in-game auction house and character wealth.</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="economy-panels">
+          <section class="card">
+            <div class="card-header"><h3>Character Gold Lookup</h3></div>
+            <div class="card-body">
+              <form id="economy-character-form" class="inline-form">
+                <label>Character
+                  <input type="text" id="economy-character-name" placeholder="Character name" />
+                </label>
+                <button type="submit" class="btn btn-accent">Lookup Gold</button>
+              </form>
+              <div id="economy-character-result" class="action-result"></div>
+            </div>
+          </section>
+
+          <section class="card card-full">
+            <div class="card-header"><h3>Average Market Values</h3></div>
+            <div class="card-body">
+              <div id="economy-market-summary" class="economy-table-wrap">
+                <p class="placeholder">Run a search or refresh the economy overview to see average buyout data per item.</p>
+              </div>
+            </div>
+          </section>
+
+          <section class="card card-full">
+            <div class="card-header"><h3>Auction House Listings</h3></div>
+            <div class="card-body">
+              <div id="economy-auction-results" class="economy-table-wrap">
+                <p class="placeholder">Run a search to see current auction house listings.</p>
+              </div>
+            </div>
+          </section>
+        </div>
+      </main>
     </div>
   </div>
 

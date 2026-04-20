@@ -2,7 +2,7 @@
 import { ts, escapeHtml, showResult, debounce, getMapName, getZoneName, CLASS_COLORS, RACE_ICONS, RACE_NAMES, CLASS_NAMES } from './utils/helpers';
 import { CONTINENT_BOUNDS, worldToCanvas } from './utils/map-coords';
 import { AppState, createInitialState, PlayerInfo } from './types/state';
-import type { ConnectionProfile, DbConfig, SoapConfig, UpdateCheckResult, EntityMediaPreviewResult, LogMonitorConfig, LogMonitorInspectionResult, LlmConfig, LlmTaskType, LlmChatContext, QueryResult, MapBotWaypoint, CharacterInventoryResult } from '../../src/types/electron';
+import type { ConnectionProfile, DbConfig, SoapConfig, UpdateCheckResult, EntityMediaPreviewResult, LogMonitorConfig, LogMonitorInspectionResult, LlmConfig, LlmTaskType, LlmChatContext, QueryResult, MapBotWaypoint, CharacterInventoryResult, EconomyOverview, EconomyCharacterGoldResult, EconomyAuctionRow, EconomyMarketSummaryRow } from '../../src/types/electron';
 import { bindInventoryTableTooltips, formatInventoryLocation, ITEM_QUALITY_COLOR } from './inventory/wow-item-tooltip';
 
 // ── Application State ────────────────────────────────────────────────────
@@ -55,6 +55,14 @@ const DEFAULT_MAP_DATABASE_PROFILE_CONFIG: DbConfig = {
   database: 'acore_characters',
 };
 
+const DEFAULT_ECONOMY_DATABASE_PROFILE_CONFIG: DbConfig = {
+  host: '127.0.0.1',
+  port: 3306,
+  username: 'acore',
+  password: '',
+  database: 'acore_characters',
+};
+
 const DEFAULT_LOG_MONITOR_PROFILE_CONFIG: LogMonitorConfig = {
   host: '127.0.0.1',
   port: 22,
@@ -90,6 +98,30 @@ const $logPreviewMeta = $<HTMLElement>('log-preview-meta');
 const $logPreviewOutput = $<HTMLElement>('log-preview-output');
 const $logAppendersTable = $<HTMLElement>('log-appenders-table');
 const $logLoggersTable = $<HTMLElement>('log-loggers-table');
+
+// Economy elements
+const $economyDbHost = $<HTMLInputElement>('economy-db-host');
+const $economyDbPort = $<HTMLInputElement>('economy-db-port');
+const $economyDbUser = $<HTMLInputElement>('economy-db-user');
+const $economyDbPass = $<HTMLInputElement>('economy-db-pass');
+const $economyDbName = $<HTMLInputElement>('economy-db-name');
+const $economyWorldDbName = $<HTMLInputElement>('economy-world-db-name');
+const $economyDbConnectBtn = $<HTMLButtonElement>('economy-db-connect-btn');
+const $economyDbDisconnectBtn = $<HTMLButtonElement>('economy-db-disconnect-btn');
+const $economyDbStatus = $<HTMLElement>('economy-db-status');
+const $economySearchTerm = $<HTMLInputElement>('economy-search-term');
+const $economyResultLimit = $<HTMLSelectElement>('economy-result-limit');
+const $economyRunSearchBtn = $<HTMLButtonElement>('economy-run-search-btn');
+const $economyRefreshBtn = $<HTMLButtonElement>('economy-refresh-btn');
+const $economyTotalAuctions = $<HTMLElement>('economy-total-auctions');
+const $economyUniqueItems = $<HTMLElement>('economy-unique-items');
+const $economyAvgUnitBuyout = $<HTMLElement>('economy-avg-unit-buyout');
+const $economyTotalGold = $<HTMLElement>('economy-total-gold');
+const $economyOverviewNote = $<HTMLElement>('economy-overview-note');
+const $economyCharacterName = $<HTMLInputElement>('economy-character-name');
+const $economyCharacterResult = $<HTMLElement>('economy-character-result');
+const $economyMarketSummary = $<HTMLElement>('economy-market-summary');
+const $economyAuctionResults = $<HTMLElement>('economy-auction-results');
 
 // Modal elements
 const $modalOverlay = $<HTMLElement>('modal-overlay');
@@ -303,6 +335,16 @@ function getCurrentMapDatabaseProfileConfig(): DbConfig {
   };
 }
 
+function getCurrentEconomyDatabaseProfileConfig(): DbConfig {
+  return {
+    host: $<HTMLInputElement>('economy-db-host')?.value.trim() || DEFAULT_ECONOMY_DATABASE_PROFILE_CONFIG.host,
+    port: Number($<HTMLInputElement>('economy-db-port')?.value.trim() || String(DEFAULT_ECONOMY_DATABASE_PROFILE_CONFIG.port)),
+    username: $<HTMLInputElement>('economy-db-user')?.value.trim() || DEFAULT_ECONOMY_DATABASE_PROFILE_CONFIG.username,
+    password: $<HTMLInputElement>('economy-db-pass')?.value || DEFAULT_ECONOMY_DATABASE_PROFILE_CONFIG.password,
+    database: $<HTMLInputElement>('economy-db-name')?.value.trim() || DEFAULT_ECONOMY_DATABASE_PROFILE_CONFIG.database,
+  };
+}
+
 function getCurrentLogMonitorProfileConfig(): LogMonitorConfig {
   return {
     host: $logHost?.value.trim() || DEFAULT_LOG_MONITOR_PROFILE_CONFIG.host,
@@ -346,6 +388,22 @@ function applyMapDatabaseProfileConfig(config: Partial<DbConfig> | undefined): v
   if ($mapDbUser) $mapDbUser.value = nextConfig.username;
   if ($mapDbPass) $mapDbPass.value = nextConfig.password;
   if ($mapDbName) $mapDbName.value = nextConfig.database;
+}
+
+function applyEconomyDatabaseProfileConfig(config: Partial<DbConfig> | undefined): void {
+  const nextConfig = { ...DEFAULT_ECONOMY_DATABASE_PROFILE_CONFIG, ...config };
+  const $economyDbHost = $<HTMLInputElement>('economy-db-host');
+  const $economyDbPort = $<HTMLInputElement>('economy-db-port');
+  const $economyDbUser = $<HTMLInputElement>('economy-db-user');
+  const $economyDbPass = $<HTMLInputElement>('economy-db-pass');
+  const $economyDbName = $<HTMLInputElement>('economy-db-name');
+
+  if ($economyDbHost) $economyDbHost.value = nextConfig.host;
+  if ($economyDbPort) $economyDbPort.value = String(nextConfig.port);
+  if ($economyDbUser) $economyDbUser.value = nextConfig.username;
+  if ($economyDbPass) $economyDbPass.value = nextConfig.password;
+  if ($economyDbName) $economyDbName.value = nextConfig.database;
+  syncEconomyWorldDatabaseName(true);
 }
 
 function applyLogMonitorProfileConfig(config: Partial<LogMonitorConfig> | undefined): void {
@@ -472,7 +530,7 @@ async function refreshUpdateStatus(force = false): Promise<void> {
 }
 
 // ── Main tab navigation ─────────────────────────────────────────────────────
-const MAIN_TAB_ORDER = ['dashboard', 'players', 'accounts', 'tickets', 'database', 'map', 'logs', 'console'] as const;
+const MAIN_TAB_ORDER = ['dashboard', 'players', 'accounts', 'tickets', 'database', 'map', 'economy', 'logs', 'console'] as const;
 type MainTabId = (typeof MAIN_TAB_ORDER)[number];
 
 function isTypingTarget(target: EventTarget | null): boolean {
@@ -1609,6 +1667,7 @@ function loadProfileConfig(profile: ConnectionProfile): void {
   applySoapProfileConfig(profile.soapConfig);
   applyDatabaseProfileConfig(profile.databaseConfig);
   applyMapDatabaseProfileConfig(profile.mapDatabaseConfig);
+  applyEconomyDatabaseProfileConfig(profile.economyDatabaseConfig);
   applyLogMonitorProfileConfig(profile.logMonitorConfig);
   resetLogMonitorView('Loaded profile settings. Run a fresh log scan to inspect this server.');
 }
@@ -1642,6 +1701,7 @@ $btnSaveProfile?.addEventListener('click', async () => {
     soapConfig: getCurrentSoapProfileConfig(),
     databaseConfig: getCurrentDatabaseProfileConfig(),
     mapDatabaseConfig: getCurrentMapDatabaseProfileConfig(),
+    economyDatabaseConfig: getCurrentEconomyDatabaseProfileConfig(),
     logMonitorConfig: getCurrentLogMonitorProfileConfig(),
   });
   
@@ -1660,6 +1720,7 @@ $btnUpdateProfile?.addEventListener('click', async () => {
     soapConfig: getCurrentSoapProfileConfig(),
     databaseConfig: getCurrentDatabaseProfileConfig(),
     mapDatabaseConfig: getCurrentMapDatabaseProfileConfig(),
+    economyDatabaseConfig: getCurrentEconomyDatabaseProfileConfig(),
     logMonitorConfig: getCurrentLogMonitorProfileConfig(),
   });
 
@@ -4459,6 +4520,331 @@ document.getElementById('table-next-page')?.addEventListener('click', () => {
 // Export for debugging
 (window as unknown as Record<string, unknown>).appState = state;
 (window as unknown as Record<string, unknown>).dbState = dbState;
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ECONOMY TAB
+// ═══════════════════════════════════════════════════════════════════════════
+
+interface EconomyState {
+  connected: boolean;
+  overview: EconomyOverview | null;
+  lastSearchTerm: string;
+  lastDerivedWorldDbName: string;
+}
+
+const economyState: EconomyState = {
+  connected: false,
+  overview: null,
+  lastSearchTerm: '',
+  lastDerivedWorldDbName: '',
+};
+
+function deriveWorldDatabaseName(charactersDatabaseName: string): string {
+  const normalized = charactersDatabaseName.trim();
+  if (!normalized) return 'acore_world';
+  if (/characters$/i.test(normalized)) {
+    return normalized.replace(/characters$/i, 'world');
+  }
+  if (/_char$/i.test(normalized)) {
+    return normalized.replace(/_char$/i, '_world');
+  }
+  return 'acore_world';
+}
+
+function syncEconomyWorldDatabaseName(force = false): void {
+  const nextDerived = deriveWorldDatabaseName($economyDbName?.value.trim() || DEFAULT_ECONOMY_DATABASE_PROFILE_CONFIG.database);
+  if ($economyWorldDbName && (force || !$economyWorldDbName.value.trim() || $economyWorldDbName.value.trim() === economyState.lastDerivedWorldDbName)) {
+    $economyWorldDbName.value = nextDerived;
+  }
+  economyState.lastDerivedWorldDbName = nextDerived;
+}
+
+function getEconomyResultLimit(): number {
+  return Math.min(Math.max(Number($economyResultLimit?.value || '25'), 1), 100);
+}
+
+function formatAuctionExpiry(expiresAt: number): string {
+  if (!expiresAt) return '—';
+  const expiresAtMs = expiresAt * 1000;
+  if (!Number.isFinite(expiresAtMs)) return String(expiresAt);
+
+  const delta = expiresAtMs - Date.now();
+  if (delta <= 0) return 'expired';
+
+  const minutes = Math.floor(delta / 60000);
+  const hours = Math.floor(minutes / 60);
+  const days = Math.floor(hours / 24);
+  if (days > 0) return `${days}d ${hours % 24}h`;
+  if (hours > 0) return `${hours}h ${minutes % 60}m`;
+  return `${Math.max(1, minutes)}m`;
+}
+
+function getQualityColor(quality: number): string {
+  return ITEM_QUALITY_COLOR[Math.min(7, Math.max(0, quality))] ?? ITEM_QUALITY_COLOR[1];
+}
+
+function resetEconomyTab(): void {
+  economyState.overview = null;
+  if ($economyTotalAuctions) $economyTotalAuctions.textContent = '--';
+  if ($economyUniqueItems) $economyUniqueItems.textContent = '--';
+  if ($economyAvgUnitBuyout) $economyAvgUnitBuyout.textContent = '--';
+  if ($economyTotalGold) $economyTotalGold.textContent = '--';
+  if ($economyOverviewNote) {
+    $economyOverviewNote.innerHTML = '<p class="placeholder">Connect to the characters database to inspect the in-game auction house and character wealth.</p>';
+  }
+  if ($economyMarketSummary) {
+    $economyMarketSummary.innerHTML = '<p class="placeholder">Run a search or refresh the economy overview to see average buyout data per item.</p>';
+  }
+  if ($economyAuctionResults) {
+    $economyAuctionResults.innerHTML = '<p class="placeholder">Run a search to see current auction house listings.</p>';
+  }
+  if ($economyCharacterResult) {
+    $economyCharacterResult.className = 'action-result';
+    $economyCharacterResult.innerHTML = '';
+  }
+}
+
+function renderEconomyOverview(overview: EconomyOverview): void {
+  economyState.overview = overview;
+  if ($economyTotalAuctions) $economyTotalAuctions.textContent = overview.totalAuctions.toLocaleString();
+  if ($economyUniqueItems) $economyUniqueItems.textContent = overview.uniqueAuctionItems.toLocaleString();
+  if ($economyAvgUnitBuyout) $economyAvgUnitBuyout.textContent = formatCopper(overview.averageUnitBuyout);
+  if ($economyTotalGold) $economyTotalGold.textContent = formatCopper(overview.totalCharacterGold);
+  if ($economyOverviewNote) {
+    $economyOverviewNote.innerHTML = `
+      <div class="economy-overview-grid">
+        <div class="economy-overview-chip"><span>Total Listed Quantity</span><strong>${overview.totalListedQuantity.toLocaleString()}</strong></div>
+        <div class="economy-overview-chip"><span>Total Buyout Value</span><strong>${escapeHtml(formatCopper(overview.totalBuyoutValue))}</strong></div>
+        <div class="economy-overview-chip"><span>Avg Listing Buyout</span><strong>${escapeHtml(formatCopper(overview.averageListingBuyout))}</strong></div>
+        <div class="economy-overview-chip"><span>Characters Tracked</span><strong>${overview.totalCharacters.toLocaleString()}</strong></div>
+        <div class="economy-overview-chip"><span>Avg Character Gold</span><strong>${escapeHtml(formatCopper(overview.averageCharacterGold))}</strong></div>
+        <div class="economy-overview-chip"><span>Richest Character</span><strong>${escapeHtml(overview.richestCharacterName || '—')} ${overview.richestCharacterName ? `• ${escapeHtml(formatCopper(overview.richestCharacterGold))}` : ''}</strong></div>
+      </div>
+    `;
+  }
+}
+
+function renderEconomyCharacterResult(result: EconomyCharacterGoldResult): void {
+  if (!$economyCharacterResult) return;
+
+  if (!result.found) {
+    showResult($economyCharacterResult, false, `No character named "${result.characterName}" found in the connected characters database.`);
+    return;
+  }
+
+  const raceName = result.race ? (RACE_NAMES[result.race] || `Race ${result.race}`) : '—';
+  const className = result.class ? (CLASS_NAMES[result.class] || `Class ${result.class}`) : '—';
+  const classColor = result.class ? (CLASS_COLORS[result.class] || 'var(--text)') : 'var(--text)';
+  $economyCharacterResult.className = 'action-result visible ok';
+  $economyCharacterResult.innerHTML = `
+    <div class="economy-character-card">
+      <div class="economy-character-stat"><span>Name</span><strong style="color:${classColor}">${escapeHtml(result.characterName)}</strong></div>
+      <div class="economy-character-stat"><span>Gold</span><strong>${escapeHtml(formatCopper(result.money))}</strong></div>
+      <div class="economy-character-stat"><span>Level / Class</span><strong>${escapeHtml(`Lv${result.level ?? '—'} ${className}`)}</strong></div>
+      <div class="economy-character-stat"><span>Race</span><strong>${escapeHtml(raceName)}</strong></div>
+      <div class="economy-character-stat"><span>Status</span><strong>${result.online ? 'Online' : 'Offline'}</strong></div>
+      <div class="economy-character-stat"><span>Account ID</span><strong>${result.accountId ?? '—'}</strong></div>
+    </div>
+  `;
+}
+
+function renderEconomyMarketSummary(rows: EconomyMarketSummaryRow[]): void {
+  if (!$economyMarketSummary) return;
+  if (!rows.length) {
+    $economyMarketSummary.innerHTML = '<p class="placeholder">No auction market data matched your search.</p>';
+    return;
+  }
+
+  $economyMarketSummary.innerHTML = `
+    <table class="economy-table">
+      <thead>
+        <tr>
+          <th>Item</th>
+          <th class="right">Listings</th>
+          <th class="right">Quantity</th>
+          <th class="right">Avg Unit</th>
+          <th class="right">Min Unit</th>
+          <th class="right">Max Unit</th>
+          <th class="right">Avg Listing</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${rows.map((row) => `
+          <tr>
+            <td>
+              <div class="economy-owner-meta">
+                <strong class="economy-item-name" style="color:${getQualityColor(row.quality)}">${escapeHtml(row.itemName)}</strong>
+                <small>#${row.itemEntry}</small>
+              </div>
+            </td>
+            <td class="right mono">${row.listingCount.toLocaleString()}</td>
+            <td class="right mono">${row.totalQuantity.toLocaleString()}</td>
+            <td class="right mono">${escapeHtml(formatCopper(row.averageUnitBuyout))}</td>
+            <td class="right mono">${escapeHtml(formatCopper(row.minimumUnitBuyout))}</td>
+            <td class="right mono">${escapeHtml(formatCopper(row.maximumUnitBuyout))}</td>
+            <td class="right mono">${escapeHtml(formatCopper(row.averageListingBuyout))}</td>
+          </tr>
+        `).join('')}
+      </tbody>
+    </table>
+  `;
+}
+
+function renderEconomyAuctionResults(rows: EconomyAuctionRow[]): void {
+  if (!$economyAuctionResults) return;
+  if (!rows.length) {
+    $economyAuctionResults.innerHTML = '<p class="placeholder">No active auction house rows matched your search.</p>';
+    return;
+  }
+
+  $economyAuctionResults.innerHTML = `
+    <table class="economy-table">
+      <thead>
+        <tr>
+          <th>Item</th>
+          <th>Owner</th>
+          <th class="right">Stack</th>
+          <th class="right">Current Bid</th>
+          <th class="right">Buyout</th>
+          <th class="right">Deposit</th>
+          <th>Expires</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${rows.map((row) => `
+          <tr>
+            <td>
+              <div class="economy-owner-meta">
+                <strong class="economy-item-name" style="color:${getQualityColor(row.quality)}">${escapeHtml(row.itemName)}</strong>
+                <small>#${row.itemEntry} • Auction ${row.auctionId}</small>
+              </div>
+            </td>
+            <td>
+              <div class="economy-owner-meta">
+                <strong>${escapeHtml(row.ownerName)}</strong>
+                <small>${escapeHtml(row.bidderName ? `Bidder: ${row.bidderName}` : `House #${row.houseId}`)}</small>
+              </div>
+            </td>
+            <td class="right mono">${row.stackSize.toLocaleString()}</td>
+            <td class="right mono">${escapeHtml(formatCopper(row.currentBid || row.startBid))}</td>
+            <td class="right mono">${row.buyoutPrice > 0 ? escapeHtml(formatCopper(row.buyoutPrice)) : '—'}</td>
+            <td class="right mono">${escapeHtml(formatCopper(row.deposit))}</td>
+            <td class="mono">${escapeHtml(formatAuctionExpiry(row.expiresAt))}</td>
+          </tr>
+        `).join('')}
+      </tbody>
+    </table>
+  `;
+}
+
+async function refreshEconomyData(): Promise<void> {
+  if (!economyState.connected) return;
+
+  const searchTerm = $economySearchTerm?.value.trim() || '';
+  const limit = getEconomyResultLimit();
+  economyState.lastSearchTerm = searchTerm;
+
+  if ($economyRefreshBtn) $economyRefreshBtn.disabled = true;
+  if ($economyRunSearchBtn) $economyRunSearchBtn.disabled = true;
+
+  try {
+    const [overview, marketSummary, auctions] = await Promise.all([
+      window.electronAPI.economy.getOverview(),
+      window.electronAPI.economy.getMarketSummary(searchTerm, limit),
+      window.electronAPI.economy.searchAuctions(searchTerm, limit),
+    ]);
+
+    renderEconomyOverview(overview);
+    renderEconomyMarketSummary(marketSummary);
+    renderEconomyAuctionResults(auctions);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    showResult($economyDbStatus, false, message);
+  } finally {
+    if ($economyRefreshBtn) $economyRefreshBtn.disabled = false;
+    if ($economyRunSearchBtn) $economyRunSearchBtn.disabled = false;
+  }
+}
+
+async function connectEconomyDb(): Promise<void> {
+  const config = getCurrentEconomyDatabaseProfileConfig();
+  if ($economyDbConnectBtn) $economyDbConnectBtn.disabled = true;
+  showResult($economyDbStatus, false, 'Connecting…');
+
+  try {
+    const result = await window.electronAPI.economy.connect(config);
+    if (!result.connected) {
+      economyState.connected = false;
+      showResult($economyDbStatus, false, result.error || 'Connection failed');
+      return;
+    }
+
+    economyState.connected = true;
+    showResult($economyDbStatus, true, `Connected to ${result.database}`);
+    if ($economyDbDisconnectBtn) $economyDbDisconnectBtn.disabled = false;
+    await refreshEconomyData();
+  } catch (error) {
+    economyState.connected = false;
+    const message = error instanceof Error ? error.message : String(error);
+    showResult($economyDbStatus, false, message);
+  } finally {
+    if ($economyDbConnectBtn) $economyDbConnectBtn.disabled = false;
+  }
+}
+
+async function disconnectEconomyDb(): Promise<void> {
+  await window.electronAPI.economy.disconnect();
+  economyState.connected = false;
+  if ($economyDbDisconnectBtn) $economyDbDisconnectBtn.disabled = true;
+  if ($economyDbConnectBtn) $economyDbConnectBtn.disabled = false;
+  showResult($economyDbStatus, false, 'Disconnected');
+  resetEconomyTab();
+}
+
+$economyDbConnectBtn?.addEventListener('click', () => {
+  void connectEconomyDb();
+});
+
+$economyDbDisconnectBtn?.addEventListener('click', () => {
+  void disconnectEconomyDb();
+});
+
+$economyRefreshBtn?.addEventListener('click', () => {
+  void refreshEconomyData();
+});
+
+$economyRunSearchBtn?.addEventListener('click', () => {
+  void refreshEconomyData();
+});
+
+$economySearchTerm?.addEventListener('keydown', (event) => {
+  if (event.key === 'Enter') {
+    event.preventDefault();
+    void refreshEconomyData();
+  }
+});
+
+$('economy-character-form')?.addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const characterName = $economyCharacterName?.value.trim() || '';
+  if (!economyState.connected || !characterName) return;
+
+  showResult($economyCharacterResult, true, 'Loading character gold…');
+  try {
+    const result = await window.electronAPI.economy.getCharacterGold(characterName);
+    renderEconomyCharacterResult(result);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    showResult($economyCharacterResult, false, message);
+  }
+});
+
+$economyDbName?.addEventListener('input', () => {
+  syncEconomyWorldDatabaseName();
+});
+
+syncEconomyWorldDatabaseName(true);
+resetEconomyTab();
 
 // ═══════════════════════════════════════════════════════════════════════════
 // LIVE MAP TAB

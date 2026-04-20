@@ -1,10 +1,10 @@
-import { app, BrowserWindow, dialog, ipcMain, Menu, shell } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, Menu, shell, IpcMainInvokeEvent } from 'electron';
 import * as path from 'path';
 import packageJson from '../package.json';
 import { SoapClient } from './soap-client';
 import { ConfigStore } from './config-store';
 import { getDbService, DatabaseService } from './database/db-service';
-import { SoapConfig, SoapResult, ConnectionProfile, DbConfig, DbConnectionState, QueryResult, FieldInfo, UpdateCheckResult, EntityMediaPreviewRequest, EntityMediaPreviewResult, LogMonitorConfig, LogMonitorInspectionResult, LogMonitorFileTailResult, LlmChatRequest, LlmChatResponse, LlmTaskType, MapPlayerPosition, MapBotWaypointRequest, MapBotWaypoint, CharacterInventoryResult, CharacterInventoryItemRow } from './types/electron';
+import { SoapConfig, SoapResult, ConnectionProfile, DbConfig, DbConnectionState, QueryResult, FieldInfo, UpdateCheckResult, EntityMediaPreviewRequest, EntityMediaPreviewResult, LogMonitorConfig, LogMonitorInspectionResult, LogMonitorFileTailResult, MapPlayerPosition, MapBotWaypointRequest, MapBotWaypoint, CharacterInventoryResult, CharacterInventoryItemRow, EconomyOverview, EconomyCharacterGoldResult, EconomyAuctionRow, EconomyMarketSummaryRow } from './types/electron';
 import { inspectRemoteLogs, readRemoteLogTail } from './log-monitor-service';
 
 const isMac = process.platform === 'darwin';
@@ -15,6 +15,7 @@ let soapClient: SoapClient | null = null;
 let configStore: ConfigStore | null = null;
 const dbService = getDbService();
 const mapDbService = new DatabaseService();
+const economyDbService = new DatabaseService();
 const UPDATE_CACHE_TTL_MS = 5 * 60 * 1000;
 const DEFAULT_GITHUB_REPO = 'scarecr0w12/wowmin';
 
@@ -29,6 +30,7 @@ const NAVIGATE_TAB_ITEMS: { label: string; tab: string }[] = [
   { label: 'Tickets', tab: 'tickets' },
   { label: 'Database', tab: 'database' },
   { label: 'Live Map', tab: 'map' },
+  { label: 'Economy', tab: 'economy' },
   { label: 'Logs', tab: 'logs' },
   { label: 'Console', tab: 'console' },
 ];
@@ -590,7 +592,7 @@ ipcMain.handle('db:testConnection', async (_event, config: DbConfig): Promise<bo
   return dbService.testConnection(config);
 });
 
-ipcMain.handle('db:query', async <T>(_event, sql: string, params?: unknown[]): Promise<QueryResult<T>> => {
+ipcMain.handle('db:query', async <T>(_event: IpcMainInvokeEvent, sql: string, params?: unknown[]): Promise<QueryResult<T>> => {
   return dbService.query<T>(sql, params);
 });
 
@@ -782,6 +784,293 @@ ipcMain.handle('map:disconnect', async (): Promise<void> => {
   await mapDbService.disconnect();
 });
 
+// ── Economy IPC Handlers ─────────────────────────────────────
+
+function getEconomyWorldTable(tableName: string): string {
+  const databaseName = deriveWorldDatabaseName(economyDbService.config?.database || '');
+  return `${escapeIdentifier(databaseName)}.${escapeIdentifier(tableName)}`;
+}
+
+function buildEconomySearchFilter(searchTerm: string): { whereClause: string; params: unknown[] } {
+  const trimmed = searchTerm.trim();
+  if (!trimmed) {
+    return { whereClause: '', params: [] };
+  }
+
+  const like = `%${trimmed}%`;
+  if (/^\d+$/.test(trimmed)) {
+    return {
+      whereClause: 'WHERE (it.name LIKE ? OR ownerChar.name LIKE ? OR CAST(ii.itemEntry AS CHAR) = ?)',
+      params: [like, like, trimmed],
+    };
+  }
+
+  return {
+    whereClause: 'WHERE (it.name LIKE ? OR ownerChar.name LIKE ?)',
+    params: [like, like],
+  };
+}
+
+ipcMain.handle('economy:connect', async (_event, config: DbConfig): Promise<DbConnectionState> => {
+  try {
+    const result = await economyDbService.connect(config);
+    if (result.success) {
+      return { connected: true, database: config.database, error: null };
+    }
+    return { connected: false, database: null, error: result.message };
+  } catch (err) {
+    const errorMessage = err instanceof Error ? err.message : String(err);
+    return { connected: false, database: null, error: errorMessage };
+  }
+});
+
+ipcMain.handle('economy:disconnect', async (): Promise<void> => {
+  await economyDbService.disconnect();
+});
+
+ipcMain.handle('economy:getOverview', async (): Promise<EconomyOverview> => {
+  if (!economyDbService.connected) {
+    throw new Error('Economy database is not connected');
+  }
+
+  const auctionStatsResult = await economyDbService.query<{
+    totalAuctions: number;
+    uniqueAuctionItems: number;
+    totalListedQuantity: number;
+    totalBuyoutValue: number;
+    averageListingBuyout: number;
+    averageUnitBuyout: number;
+  }>(`
+    SELECT
+      COUNT(*) AS totalAuctions,
+      COUNT(DISTINCT ii.itemEntry) AS uniqueAuctionItems,
+      COALESCE(SUM(ii.count), 0) AS totalListedQuantity,
+      COALESCE(SUM(ah.buyoutprice), 0) AS totalBuyoutValue,
+      COALESCE(AVG(CASE WHEN ah.buyoutprice > 0 THEN ah.buyoutprice END), 0) AS averageListingBuyout,
+      COALESCE(AVG(CASE WHEN ah.buyoutprice > 0 AND ii.count > 0 THEN ah.buyoutprice / ii.count END), 0) AS averageUnitBuyout
+    FROM auctionhouse ah
+    INNER JOIN item_instance ii ON ii.guid = ah.itemguid
+  `);
+
+  const characterStatsResult = await economyDbService.query<{
+    totalCharacters: number;
+    totalCharacterGold: number;
+    averageCharacterGold: number;
+  }>(`
+    SELECT
+      COUNT(*) AS totalCharacters,
+      COALESCE(SUM(money), 0) AS totalCharacterGold,
+      COALESCE(AVG(money), 0) AS averageCharacterGold
+    FROM characters
+  `);
+
+  const richestCharacterResult = await economyDbService.query<{
+    name: string;
+    money: number;
+  }>(`
+    SELECT name, money
+    FROM characters
+    ORDER BY money DESC, name ASC
+    LIMIT 1
+  `);
+
+  const auctionStats = auctionStatsResult.rows[0];
+  const characterStats = characterStatsResult.rows[0];
+  const richestCharacter = richestCharacterResult.rows[0];
+
+  return {
+    totalAuctions: numField(auctionStats?.totalAuctions),
+    uniqueAuctionItems: numField(auctionStats?.uniqueAuctionItems),
+    totalListedQuantity: numField(auctionStats?.totalListedQuantity),
+    totalBuyoutValue: numField(auctionStats?.totalBuyoutValue),
+    averageListingBuyout: numField(auctionStats?.averageListingBuyout),
+    averageUnitBuyout: numField(auctionStats?.averageUnitBuyout),
+    totalCharacters: numField(characterStats?.totalCharacters),
+    totalCharacterGold: numField(characterStats?.totalCharacterGold),
+    averageCharacterGold: numField(characterStats?.averageCharacterGold),
+    richestCharacterName: richestCharacter?.name ? String(richestCharacter.name) : null,
+    richestCharacterGold: numField(richestCharacter?.money),
+  };
+});
+
+ipcMain.handle('economy:getCharacterGold', async (_event, characterName: string): Promise<EconomyCharacterGoldResult> => {
+  if (!economyDbService.connected) {
+    throw new Error('Economy database is not connected');
+  }
+
+  const name = characterName.trim();
+  if (!name) {
+    return {
+      found: false,
+      characterName: '',
+      level: null,
+      race: null,
+      class: null,
+      money: 0,
+      online: false,
+      accountId: null,
+    };
+  }
+
+  const result = await economyDbService.query<{
+    name: string;
+    level: number;
+    race: number;
+    class: number;
+    money: number;
+    online: number;
+    account: number;
+  }>(`
+    SELECT name, level, race, class, money, online, account
+    FROM characters
+    WHERE LOWER(name) = LOWER(?)
+    LIMIT 1
+  `, [name]);
+
+  const row = result.rows[0];
+  if (!row) {
+    return {
+      found: false,
+      characterName: name,
+      level: null,
+      race: null,
+      class: null,
+      money: 0,
+      online: false,
+      accountId: null,
+    };
+  }
+
+  return {
+    found: true,
+    characterName: String(row.name),
+    level: numField(row.level),
+    race: numField(row.race),
+    class: numField(row.class),
+    money: numField(row.money),
+    online: numField(row.online) > 0,
+    accountId: numField(row.account),
+  };
+});
+
+ipcMain.handle('economy:searchAuctions', async (_event, searchTerm = '', limit = 50): Promise<EconomyAuctionRow[]> => {
+  if (!economyDbService.connected) {
+    throw new Error('Economy database is not connected');
+  }
+
+  const worldItemTemplateTable = getEconomyWorldTable('item_template');
+  const normalizedLimit = Math.min(Math.max(numField(limit, 50), 1), 100);
+  const { whereClause, params } = buildEconomySearchFilter(searchTerm);
+
+  const result = await economyDbService.query<{
+    auctionId: number;
+    itemEntry: number;
+    itemName: string;
+    quality: number;
+    ownerName: string;
+    bidderName: string | null;
+    stackSize: number;
+    startBid: number;
+    currentBid: number;
+    buyoutPrice: number;
+    deposit: number;
+    houseId: number;
+    expiresAt: number;
+  }>(`
+    SELECT
+      ah.id AS auctionId,
+      ii.itemEntry AS itemEntry,
+      it.name AS itemName,
+      it.Quality AS quality,
+      COALESCE(ownerChar.name, CONCAT('GUID ', ah.itemowner)) AS ownerName,
+      bidderChar.name AS bidderName,
+      ii.count AS stackSize,
+      ah.startbid AS startBid,
+      ah.lastbid AS currentBid,
+      ah.buyoutprice AS buyoutPrice,
+      ah.deposit AS deposit,
+      ah.houseid AS houseId,
+      ah.time AS expiresAt
+    FROM auctionhouse ah
+    INNER JOIN item_instance ii ON ii.guid = ah.itemguid
+    INNER JOIN ${worldItemTemplateTable} it ON it.entry = ii.itemEntry
+    LEFT JOIN characters ownerChar ON ownerChar.guid = ah.itemowner
+    LEFT JOIN characters bidderChar ON bidderChar.guid = ah.buyguid
+    ${whereClause}
+    ORDER BY ah.time ASC, ah.buyoutprice DESC, ah.id DESC
+    LIMIT ${normalizedLimit}
+  `, params);
+
+  return result.rows.map((row) => ({
+    auctionId: numField(row.auctionId),
+    itemEntry: numField(row.itemEntry),
+    itemName: String(row.itemName || 'Unknown item'),
+    quality: numField(row.quality),
+    ownerName: String(row.ownerName || 'Unknown'),
+    bidderName: row.bidderName ? String(row.bidderName) : null,
+    stackSize: numField(row.stackSize, 1),
+    startBid: numField(row.startBid),
+    currentBid: numField(row.currentBid),
+    buyoutPrice: numField(row.buyoutPrice),
+    deposit: numField(row.deposit),
+    houseId: numField(row.houseId),
+    expiresAt: numField(row.expiresAt),
+  }));
+});
+
+ipcMain.handle('economy:getMarketSummary', async (_event, searchTerm = '', limit = 25): Promise<EconomyMarketSummaryRow[]> => {
+  if (!economyDbService.connected) {
+    throw new Error('Economy database is not connected');
+  }
+
+  const worldItemTemplateTable = getEconomyWorldTable('item_template');
+  const normalizedLimit = Math.min(Math.max(numField(limit, 25), 1), 100);
+  const { whereClause, params } = buildEconomySearchFilter(searchTerm);
+
+  const result = await economyDbService.query<{
+    itemEntry: number;
+    itemName: string;
+    quality: number;
+    listingCount: number;
+    totalQuantity: number;
+    averageListingBuyout: number;
+    averageUnitBuyout: number;
+    minimumUnitBuyout: number;
+    maximumUnitBuyout: number;
+  }>(`
+    SELECT
+      ii.itemEntry AS itemEntry,
+      it.name AS itemName,
+      it.Quality AS quality,
+      COUNT(*) AS listingCount,
+      COALESCE(SUM(ii.count), 0) AS totalQuantity,
+      COALESCE(AVG(CASE WHEN ah.buyoutprice > 0 THEN ah.buyoutprice END), 0) AS averageListingBuyout,
+      COALESCE(AVG(CASE WHEN ah.buyoutprice > 0 AND ii.count > 0 THEN ah.buyoutprice / ii.count END), 0) AS averageUnitBuyout,
+      COALESCE(MIN(CASE WHEN ah.buyoutprice > 0 AND ii.count > 0 THEN ah.buyoutprice / ii.count END), 0) AS minimumUnitBuyout,
+      COALESCE(MAX(CASE WHEN ah.buyoutprice > 0 AND ii.count > 0 THEN ah.buyoutprice / ii.count END), 0) AS maximumUnitBuyout
+    FROM auctionhouse ah
+    INNER JOIN item_instance ii ON ii.guid = ah.itemguid
+    INNER JOIN ${worldItemTemplateTable} it ON it.entry = ii.itemEntry
+    LEFT JOIN characters ownerChar ON ownerChar.guid = ah.itemowner
+    ${whereClause}
+    GROUP BY ii.itemEntry, it.name, it.Quality
+    ORDER BY listingCount DESC, totalQuantity DESC, averageUnitBuyout DESC
+    LIMIT ${normalizedLimit}
+  `, params);
+
+  return result.rows.map((row) => ({
+    itemEntry: numField(row.itemEntry),
+    itemName: String(row.itemName || 'Unknown item'),
+    quality: numField(row.quality),
+    listingCount: numField(row.listingCount),
+    totalQuantity: numField(row.totalQuantity),
+    averageListingBuyout: numField(row.averageListingBuyout),
+    averageUnitBuyout: numField(row.averageUnitBuyout),
+    minimumUnitBuyout: numField(row.minimumUnitBuyout),
+    maximumUnitBuyout: numField(row.maximumUnitBuyout),
+  }));
+});
+
 ipcMain.handle('inventory:getCharacterInventory', async (_event, characterName: string): Promise<CharacterInventoryResult> => {
   const name = characterName?.trim() ?? '';
   if (!name) {
@@ -939,7 +1228,7 @@ ipcMain.handle('inventory:getCharacterInventory', async (_event, characterName: 
   }
 });
 
-ipcMain.handle('map:getPlayerPositions', async (): Promise<MapPlayerRow[]> => {
+ipcMain.handle('map:getPlayerPositions', async (): Promise<MapPlayerPosition[]> => {
   try {
     const result = await mapDbService.query<MapPlayerQueryRow>(
       'SELECT name, map, position_x, position_y, position_z, level, race, `class`, account FROM characters WHERE online = 1'

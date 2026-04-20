@@ -46,6 +46,14 @@ and direct database access.
 - Optional map image backgrounds: place `0.jpg`, `1.jpg`, `530.jpg`, `571.jpg` in `assets/maps/` (see `assets/maps/README.txt`)
 - Requires a separate database connection to `acore_characters`
 
+### Economy Monitor (New!)
+- Dedicated **Economy** tab for monitoring the live in-game auction house and character wealth
+- Search active auction-house listings by item name, item entry, or owner name
+- View per-item market averages including listing count, total quantity, average unit buyout, and min/max unit pricing
+- Look up any character's current gold directly from the connected characters database
+- Overview cards surface active auction counts, unique items listed, average buyout pricing, total realm gold, and the richest tracked character
+- Uses the connected `acore_characters` database for auction and gold data, plus the matching world database name for item names and quality metadata
+
 ### Remote Log Monitor (New!)
 - Connect to a remote AzerothCore host over SSH/SFTP
 - Scan `worldserver.conf` to discover configured `Logger.*` and `Appender.*` definitions
@@ -106,6 +114,8 @@ access to your AzerothCore databases:
 - `acore_world` - World database (creatures, items, quests, etc.)
 - `acore_auth` - Auth database (accounts, permissions)
 - `acore_characters` - Characters database (player data)
+
+The **Economy** tab uses the `acore_characters` database for auction-house and character-money data, and derives the matching world database name (for example `acore_world`) to resolve item names and quality.
 
 ## Getting Started
 
@@ -173,6 +183,20 @@ npm start
 6. Review the file details panel to confirm the resolved path, timestamp, size, and matched appender hints before loading the preview.
 7. Enable **Live follow** if you want the preview to auto-refresh like a lightweight in-app `tail -f`, then choose the refresh interval that fits your server.
 8. Save the connection profile if you want those remote log settings remembered alongside your SOAP/database details.
+
+### Economy Monitor
+1. Navigate to the **Economy** tab.
+2. Enter the `acore_characters` MySQL connection details and click **Connect**.
+3. Review the overview cards to see active auctions, unique listed items, average buyout values, and total character gold.
+4. Use the search field to find auction-house rows by item name, numeric item entry, or owner name.
+5. Review **Average Market Values** for quick per-item pricing averages and **Auction House Listings** for the live individual rows behind that market.
+6. Use **Character Gold Lookup** to inspect the money held by a specific character.
+
+#### Economy monitor notes
+
+- Auction data comes from the AzerothCore `auctionhouse` and `item_instance` tables in the connected characters database.
+- Item names and quality colours are resolved from the matching world database's `item_template` table.
+- Search supports both fuzzy text matching and direct numeric item-entry lookup.
 
 #### Remote log monitor notes
 
@@ -243,7 +267,7 @@ wow-admin/
 │   │   ├── tailwind.css    # Tailwind input
 │   │   └── output.css      # Generated CSS
 │   └── scripts/
-│       ├── app.ts          # Main frontend logic
+│       ├── app.ts          # Main frontend logic (SOAP, DB, map, economy, logs)
 │       ├── types/
 │       │   └── state.ts    # Application state types
 │       └── utils/

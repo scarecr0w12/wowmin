@@ -55,6 +55,59 @@ export interface DbConnectionState {
   error: string | null;
 }
 
+export interface EconomyOverview {
+  totalAuctions: number;
+  uniqueAuctionItems: number;
+  totalListedQuantity: number;
+  totalBuyoutValue: number;
+  averageListingBuyout: number;
+  averageUnitBuyout: number;
+  totalCharacters: number;
+  totalCharacterGold: number;
+  averageCharacterGold: number;
+  richestCharacterName: string | null;
+  richestCharacterGold: number;
+}
+
+export interface EconomyCharacterGoldResult {
+  found: boolean;
+  characterName: string;
+  level: number | null;
+  race: number | null;
+  class: number | null;
+  money: number;
+  online: boolean;
+  accountId: number | null;
+}
+
+export interface EconomyAuctionRow {
+  auctionId: number;
+  itemEntry: number;
+  itemName: string;
+  quality: number;
+  ownerName: string;
+  bidderName: string | null;
+  stackSize: number;
+  startBid: number;
+  currentBid: number;
+  buyoutPrice: number;
+  deposit: number;
+  houseId: number;
+  expiresAt: number;
+}
+
+export interface EconomyMarketSummaryRow {
+  itemEntry: number;
+  itemName: string;
+  quality: number;
+  listingCount: number;
+  totalQuantity: number;
+  averageListingBuyout: number;
+  averageUnitBuyout: number;
+  minimumUnitBuyout: number;
+  maximumUnitBuyout: number;
+}
+
 export interface QueryResult<T = Record<string, unknown>> {
   result: T[];
   fields: FieldInfo[];
@@ -78,6 +131,7 @@ export interface ConnectionProfile {
   soapConfig: SoapConfig;
   databaseConfig: DbConfig;
   mapDatabaseConfig: DbConfig;
+  economyDatabaseConfig: DbConfig;
   createdAt: string;
   updatedAt: string;
 }
@@ -105,6 +159,13 @@ export type IpcChannels = {
   'db:beginTransaction': () => void;
   'db:commit': () => void;
   'db:rollback': () => void;
+
+  'economy:connect': (config: DbConfig) => DbConnectionState;
+  'economy:disconnect': () => void;
+  'economy:getOverview': () => EconomyOverview;
+  'economy:getCharacterGold': (characterName: string) => EconomyCharacterGoldResult;
+  'economy:searchAuctions': (searchTerm?: string, limit?: number) => EconomyAuctionRow[];
+  'economy:getMarketSummary': (searchTerm?: string, limit?: number) => EconomyMarketSummaryRow[];
   
   // Profile operations
   'config:getProfiles': () => ConnectionProfile[];
