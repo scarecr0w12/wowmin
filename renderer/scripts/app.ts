@@ -4887,8 +4887,8 @@ let mapSelectedPlayerName: string | null = null;
 let mapSelectedBotWaypoint: MapBotWaypoint | null = null;
 let mapSelectedBotWaypointLoading = false;
 let mapSelectedBotWaypointRequestToken = 0;
-const MAP_MIN_ZOOM = 1;
-const MAP_MAX_ZOOM = 5;
+const MAP_MIN_ZOOM = 0.1;
+const MAP_MAX_ZOOM = 50;
 const MAP_ZOOM_STEP = 1.2;
 let mapDragState: { startX: number; startY: number; startPanX: number; startPanY: number } | null = null;
 let mapSuppressClick = false;
@@ -5013,23 +5013,21 @@ function getMapViewport(canvasWidth: number, canvasHeight: number, bounds: (type
 
   const canvasAspectRatio = canvasWidth / canvasHeight;
   if (canvasAspectRatio > aspectRatio) {
-    const height = canvasHeight;
-    const width = Math.max(1, Math.round(height * aspectRatio));
+    const width = canvasWidth;
+    const height = Math.max(1, Math.round(width / aspectRatio));
     return {
-      x: Math.floor((canvasWidth - width) / 2),
-      y: 0,
+      x: 0,
+      y: Math.floor((canvasHeight - height) / 2),
       width,
       height,
     };
   }
-      updateEntityPreview();
-      void loadEntityRelations();
 
-  const width = canvasWidth;
-  const height = Math.max(1, Math.round(width / aspectRatio));
+  const height = canvasHeight;
+  const width = Math.max(1, Math.round(height * aspectRatio));
   return {
-    x: 0,
-    y: Math.floor((canvasHeight - height) / 2),
+    x: Math.floor((canvasWidth - width) / 2),
+    y: 0,
     width,
     height,
   };
@@ -5055,17 +5053,24 @@ function isPointInViewport(x: number, y: number, viewport: MapViewport): boolean
   return x >= viewport.x && x <= viewport.x + viewport.width && y >= viewport.y && y <= viewport.y + viewport.height;
 }
 
-function getClampedMapPan(viewport: MapViewport, zoom = state.mapZoom, panX = state.mapPanX, panY = state.mapPanY): { x: number; y: number } {
-  if (zoom <= MAP_MIN_ZOOM) {
-    return { x: 0, y: 0 };
-  }
-
-  const maxPanX = (viewport.width * zoom - viewport.width) / 2;
-  const maxPanY = (viewport.height * zoom - viewport.height) / 2;
+function getClampedMapPan(viewport: MapViewport, canvasWidth: number, canvasHeight: number, zoom = state.mapZoom, panX = state.mapPanX, panY = state.mapPanY): { x: number; y: number } {
+  const maxPanX = Math.max(0, (viewport.width * zoom - canvasWidth) / 2);
+  const maxPanY = Math.max(0, (viewport.height * zoom - canvasHeight) / 2);
   return {
     x: clamp(panX, -maxPanX, maxPanX),
     y: clamp(panY, -maxPanY, maxPanY),
   };
+}
+
+function isMapPannable(): boolean {
+  if (!$mapCanvas) return false;
+  const bounds = CONTINENT_BOUNDS[state.mapSelectedContinent];
+  if (!bounds) return false;
+  const W = $mapCanvas.width || $mapCanvas.clientWidth;
+  const H = $mapCanvas.height || $mapCanvas.clientHeight;
+  if (!W || !H) return false;
+  const frame = getMapViewport(W, H, bounds, state.mapSelectedContinent);
+  return frame.width * state.mapZoom - W > 0.5 || frame.height * state.mapZoom - H > 0.5;
 }
 
 function getMapRenderLayout(
@@ -5076,7 +5081,7 @@ function getMapRenderLayout(
 ): MapRenderLayout {
   const frame = getMapViewport(canvasWidth, canvasHeight, bounds, mapId);
   const zoom = clamp(state.mapZoom, MAP_MIN_ZOOM, MAP_MAX_ZOOM);
-  const pan = getClampedMapPan(frame, zoom);
+  const pan = getClampedMapPan(frame, canvasWidth, canvasHeight, zoom);
   const contentWidth = frame.width * zoom;
   const contentHeight = frame.height * zoom;
   const centeredX = frame.x - (contentWidth - frame.width) / 2;
@@ -5095,15 +5100,11 @@ function getMapRenderLayout(
 
 function syncMapViewState(canvasWidth?: number, canvasHeight?: number): void {
   state.mapZoom = clamp(state.mapZoom, MAP_MIN_ZOOM, MAP_MAX_ZOOM);
-  if (state.mapZoom <= MAP_MIN_ZOOM) {
-    state.mapZoom = MAP_MIN_ZOOM;
-    state.mapPanX = 0;
-    state.mapPanY = 0;
-  } else if (canvasWidth && canvasHeight) {
+  if (canvasWidth && canvasHeight) {
     const bounds = CONTINENT_BOUNDS[state.mapSelectedContinent];
     if (bounds) {
       const frame = getMapViewport(canvasWidth, canvasHeight, bounds, state.mapSelectedContinent);
-      const pan = getClampedMapPan(frame);
+      const pan = getClampedMapPan(frame, canvasWidth, canvasHeight);
       state.mapPanX = pan.x;
       state.mapPanY = pan.y;
     }
@@ -5115,13 +5116,13 @@ function syncMapViewState(canvasWidth?: number, canvasHeight?: number): void {
   if ($mapZoomOutBtn) $mapZoomOutBtn.disabled = state.mapZoom <= MAP_MIN_ZOOM + 0.001;
   if ($mapZoomInBtn) $mapZoomInBtn.disabled = state.mapZoom >= MAP_MAX_ZOOM - 0.001;
   if ($mapInteractionHint) {
-    const shouldHideHint = state.mapZoom > MAP_MIN_ZOOM || Boolean(mapDragState);
+    const shouldHideHint = isMapPannable() || Boolean(mapDragState);
     $mapInteractionHint.classList.toggle('hidden', shouldHideHint);
   }
 }
 
 function resetMapZoom(render = true): void {
-  state.mapZoom = MAP_MIN_ZOOM;
+  state.mapZoom = 1;
   state.mapPanX = 0;
   state.mapPanY = 0;
   syncMapViewState($mapCanvas?.width, $mapCanvas?.height);
@@ -5151,17 +5152,14 @@ function zoomMap(nextZoom: number, anchorX?: number, anchorY?: number): void {
   const relY = (ay - currentLayout.content.y) / currentLayout.content.height;
 
   state.mapZoom = targetZoom;
-  if (targetZoom <= MAP_MIN_ZOOM) {
-    state.mapPanX = 0;
-    state.mapPanY = 0;
-  } else {
+  {
     const newContentWidth = frame.width * targetZoom;
     const newContentHeight = frame.height * targetZoom;
     const centeredX = frame.x - (newContentWidth - frame.width) / 2;
     const centeredY = frame.y - (newContentHeight - frame.height) / 2;
     const newContentX = ax - relX * newContentWidth;
     const newContentY = ay - relY * newContentHeight;
-    const pan = getClampedMapPan(frame, targetZoom, newContentX - centeredX, newContentY - centeredY);
+    const pan = getClampedMapPan(frame, W, H, targetZoom, newContentX - centeredX, newContentY - centeredY);
     state.mapPanX = pan.x;
     state.mapPanY = pan.y;
   }
@@ -5179,7 +5177,7 @@ function panMap(nextPanX: number, nextPanY: number): void {
   if (!W || !H) return;
 
   const frame = getMapViewport(W, H, bounds, state.mapSelectedContinent);
-  const pan = getClampedMapPan(frame, state.mapZoom, nextPanX, nextPanY);
+  const pan = getClampedMapPan(frame, W, H, state.mapZoom, nextPanX, nextPanY);
   state.mapPanX = pan.x;
   state.mapPanY = pan.y;
   syncMapViewState(W, H);
@@ -5650,7 +5648,7 @@ $mapCanvas?.addEventListener('mousemove', (e) => {
     $mapCanvas.style.cursor = 'pointer';
   } else {
     $mapTooltip.classList.add('hidden');
-    $mapCanvas.style.cursor = state.mapZoom > MAP_MIN_ZOOM ? 'grab' : 'default';
+    $mapCanvas.style.cursor = isMapPannable() ? 'grab' : 'default';
   }
 });
 
@@ -5660,7 +5658,7 @@ $mapCanvas?.addEventListener('mouseleave', () => {
 });
 
 $mapCanvas?.addEventListener('mousedown', (e) => {
-  if (e.button !== 0 || !$mapCanvas || state.mapZoom <= MAP_MIN_ZOOM) return;
+  if (e.button !== 0 || !$mapCanvas || !isMapPannable()) return;
   const bounds = CONTINENT_BOUNDS[state.mapSelectedContinent];
   if (!bounds) return;
 
@@ -5695,7 +5693,7 @@ window.addEventListener('mousemove', (e) => {
 window.addEventListener('mouseup', () => {
   if (!mapDragState) return;
   mapDragState = null;
-  if ($mapCanvas) $mapCanvas.style.cursor = state.mapZoom > MAP_MIN_ZOOM ? 'grab' : 'default';
+  if ($mapCanvas) $mapCanvas.style.cursor = isMapPannable() ? 'grab' : 'default';
 });
 
 $mapCanvas?.addEventListener('wheel', (e) => {
