@@ -3400,8 +3400,25 @@ tbody tr:hover { background: var(--tint-accent-05); }
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
-  overflow-y: auto;
+  overflow: hidden;
+  min-height: 0;
   gap: 0;
+}
+
+.map-sidebar > .card {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.map-sidebar > .card:not(.map-player-list-card) {
+  flex-shrink: 0;
+  max-height: 40%;
+}
+
+.map-sidebar > .card:not(.map-player-list-card) > .card-body {
+  overflow-y: auto;
+  min-height: 0;
 }
 
 .map-main {
@@ -3607,6 +3624,43 @@ tbody tr:hover { background: var(--tint-accent-05); }
 
 #map-playerbots-db-name:focus {
   border-color: var(--accent);
+}
+
+.map-level-range {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 3px;
+}
+
+.map-level-range input {
+  flex: 1;
+  min-width: 0;
+  padding: 5px 6px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-input);
+  color: var(--text);
+  font-size: 12px;
+  text-align: center;
+  outline: none;
+  appearance: textfield;
+  -moz-appearance: textfield;
+}
+
+.map-level-range input::-webkit-outer-spin-button,
+.map-level-range input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.map-level-range input:focus {
+  border-color: var(--accent);
+}
+
+.map-level-range span {
+  color: var(--text-muted);
+  font-size: 12px;
 }
 
 @media (max-width: 1280px) {
