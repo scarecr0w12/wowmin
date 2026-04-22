@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.4.1] - 2026-04-22
+
+### Improved
+
+- Live map rendering now supports cover-style viewport filling so continent backgrounds scale to fill the available canvas area more naturally
+- Expanded the live map zoom range to support much wider inspection, from 10% all the way up to 5000%
+
 ## [2.4.0] - 2026-04-20
 
 ### Added
