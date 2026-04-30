@@ -1654,6 +1654,18 @@ interface TicketRow {
   raw: string;
 }
 
+interface ParsedTicketDetail {
+  id: string;
+  player: string;
+  created: string;
+  lastChanged: string;
+  assignedTo: string;
+  message: string;
+  comment: string;
+  response: string;
+  raw: string;
+}
+
 let ticketFilter = 'list';
 let ticketAutoInterval: ReturnType<typeof setInterval> | null = null;
 let ticketsLoaded = false;
@@ -1665,12 +1677,82 @@ const $ticketDetail = $<HTMLElement>('ticket-detail-panel');
 const $ticketDetailTitle = $<HTMLElement>('ticket-detail-title');
 const $ticketDetailBody = $<HTMLElement>('ticket-detail-body');
 
+function normalizeTicketText(raw: string, collapseWhitespace = false): string {
+  const normalized = raw
+    .replace(/\|c[0-9a-fA-F]{8}/g, '')
+    .replace(/\|r/g, '')
+    .replace(/\|H[^|]*\|h/g, '')
+    .replace(/\|h/g, '')
+    .replace(/\r/g, '')
+    .replace(/\u00a0/g, ' ')
+    .trim();
+
+  return collapseWhitespace ? normalized.replace(/\s+/g, ' ').trim() : normalized;
+}
+
+function matchTicketField(source: string, label: string, nextLabels: string[]): string {
+  const escapedLabel = label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const nextPattern = nextLabels
+    .map((nextLabel) => nextLabel.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+    .join('|');
+  const pattern = nextPattern
+    ? new RegExp(`${escapedLabel}\\s*:\\s*(.+?)(?=\\s+(?:${nextPattern})\\s*:|$)`, 'i')
+    : new RegExp(`${escapedLabel}\\s*:\\s*(.+)$`, 'i');
+  const match = source.match(pattern);
+  return match?.[1]?.trim().replace(/[.,]+$/, '') ?? '';
+}
+
+function parseTicketDetail(raw: string): ParsedTicketDetail | null {
+  const normalized = normalizeTicketText(raw, true);
+  if (!normalized) return null;
+
+  const idMatch = normalized.match(/Ticket\s*:?[\s#]*(\d+)\.?/i);
+  if (!idMatch) return null;
+
+  return {
+    id: idMatch[1],
+    player: matchTicketField(normalized, 'Created by', ['Created', 'Last change', 'Assigned to', 'Ticket Message', 'Comment', 'Response']),
+    created: matchTicketField(normalized, 'Created', ['Last change', 'Assigned to', 'Ticket Message', 'Comment', 'Response']),
+    lastChanged: matchTicketField(normalized, 'Last change', ['Assigned to', 'Ticket Message', 'Comment', 'Response']),
+    assignedTo: matchTicketField(normalized, 'Assigned to', ['Ticket Message', 'Comment', 'Response']),
+    message: matchTicketField(normalized, 'Ticket Message', ['Comment', 'Response']),
+    comment: matchTicketField(normalized, 'Comment', ['Response']),
+    response: matchTicketField(normalized, 'Response', []),
+    raw: normalized,
+  };
+}
+
+function renderTicketDetail(detail: ParsedTicketDetail): string {
+  const metaRows: Array<[string, string]> = [
+    ['Player', detail.player || '—'],
+    ['Created', detail.created || '—'],
+    ['Last Updated', detail.lastChanged || '—'],
+    ['Assigned To', detail.assignedTo || 'Unassigned'],
+  ];
+
+  const sections = [
+    detail.message ? `<div class="ticket-detail-section"><div class="ticket-detail-label">Message</div><div class="ticket-detail-text">${escapeHtml(detail.message)}</div></div>` : '',
+    detail.comment ? `<div class="ticket-detail-section"><div class="ticket-detail-label">Comment</div><div class="ticket-detail-text">${escapeHtml(detail.comment)}</div></div>` : '',
+    detail.response ? `<div class="ticket-detail-section"><div class="ticket-detail-label">Response</div><div class="ticket-detail-text">${escapeHtml(detail.response)}</div></div>` : '',
+  ].filter(Boolean).join('');
+
+  return `
+    <div class="ticket-detail-body">
+      <div class="pinfo-grid">
+        ${metaRows.map(([label, value]) => `<div class="pinfo-label">${escapeHtml(label)}</div><div class="pinfo-value">${escapeHtml(value)}</div>`).join('')}
+      </div>
+      ${sections || `<div class="ticket-detail-section"><div class="ticket-detail-label">Details</div><div class="ticket-detail-text">${escapeHtml(detail.raw)}</div></div>`}
+    </div>`;
+}
+
 function parseTicketList(raw: string): TicketRow[] {
   if (!raw) return [];
 
+  const normalizedRaw = normalizeTicketText(raw);
+
   const tickets: TicketRow[] = [];
-  const lines = raw.split('\n').map((line) => line.trim()).filter(Boolean);
-  const ticketBlockRegex = /Ticket\s*#?(\d+)/i;
+  const lines = normalizedRaw.split('\n').map((line) => normalizeTicketText(line, true)).filter(Boolean);
+  const ticketBlockRegex = /Ticket\s*:?[\s#]*(\d+)\.?/i;
   let currentTicket: TicketRow | null = null;
 
   for (const line of lines) {
@@ -1678,18 +1760,14 @@ function parseTicketList(raw: string): TicketRow[] {
     if (idMatch) {
       if (currentTicket) tickets.push(currentTicket);
 
-      const id = idMatch[1];
-      const playerMatch = line.match(/(?:Created\s+by|from)[:\s]+['"]?([^\s.'"\n]+)/i);
-      const createdMatch = line.match(/Created\s+(?:on)?[:\s]+(.+?)(?:\.|Last|$)/i);
-      const changedMatch = line.match(/Last\s+chang(?:e|ed)\s+by[:\s]+([^\n.]+)/i);
-      const assignedMatch = line.match(/Assign(?:ed)?\s+(?:to)?[:\s]+([^\n.]+)/i);
+      const detail = parseTicketDetail(line);
 
       currentTicket = {
-        id,
-        player: playerMatch ? playerMatch[1] : '',
-        created: createdMatch ? createdMatch[1].trim() : '',
-        lastChanged: changedMatch ? changedMatch[1].trim() : '',
-        assignedTo: assignedMatch ? assignedMatch[1].trim() : '',
+        id: detail?.id || idMatch[1],
+        player: detail?.player || '',
+        created: detail?.created || '',
+        lastChanged: detail?.lastChanged || '',
+        assignedTo: detail?.assignedTo || '',
         raw: line,
       };
       continue;
@@ -1698,31 +1776,28 @@ function parseTicketList(raw: string): TicketRow[] {
     if (!currentTicket) continue;
 
     currentTicket.raw += `\n${line}`;
-
-    if (!currentTicket.player) {
-      const playerMatch = line.match(/(?:Created\s+by|from)[:\s]+['"]?([^\s.'"\n]+)/i);
-      if (playerMatch) currentTicket.player = playerMatch[1];
-    }
-
-    if (!currentTicket.assignedTo) {
-      const assignedMatch = line.match(/Assign(?:ed)?\s+(?:to)?[:\s]+([^\n.]+)/i);
-      if (assignedMatch) currentTicket.assignedTo = assignedMatch[1].trim();
+    const detail = parseTicketDetail(currentTicket.raw);
+    if (detail) {
+      currentTicket.player = detail.player || currentTicket.player;
+      currentTicket.created = detail.created || currentTicket.created;
+      currentTicket.lastChanged = detail.lastChanged || currentTicket.lastChanged;
+      currentTicket.assignedTo = detail.assignedTo || currentTicket.assignedTo;
     }
   }
 
   if (currentTicket) tickets.push(currentTicket);
 
-  if (tickets.length === 0 && raw.trim() && !raw.match(/no\s+(open|online|closed|escalated)?\s*(?:gm\s+)?tickets/i)) {
-    const anyIds = raw.match(/#(\d+)/g);
+  if (tickets.length === 0 && normalizedRaw.trim() && !normalizedRaw.match(/no\s+(open|online|closed|escalated)?\s*(?:gm\s+)?tickets/i)) {
+    const anyIds = [...normalizedRaw.matchAll(/Ticket\s*:?[\s#]*(\d+)\.?/gi)].map((match) => match[1]);
     if (anyIds) {
       for (const match of anyIds) {
         tickets.push({
-          id: match.replace('#', ''),
+          id: match,
           player: '',
           created: '',
           lastChanged: '',
           assignedTo: '',
-          raw,
+          raw: normalizedRaw,
         });
       }
     }
@@ -1840,7 +1915,10 @@ async function viewTicket(id: string): Promise<void> {
 
   const result = await exec(`ticket viewid ${id}`);
   if (result.success) {
-    $ticketDetailBody.innerHTML = `<div class="ticket-detail-body">${escapeHtml(result.message || 'No details available.')}</div>`;
+    const detail = parseTicketDetail(result.message || '');
+    $ticketDetailBody.innerHTML = detail
+      ? renderTicketDetail(detail)
+      : `<div class="ticket-detail-body">${escapeHtml(normalizeTicketText(result.message || 'No details available.'))}</div>`;
   } else {
     $ticketDetailBody.innerHTML = `<p style="color:var(--accent)">${escapeHtml(result.message || 'Failed to load ticket.')}</p>`;
   }

@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.4.3] - 2026-04-30
+
+### Fixed
+
+- Ticket list parsing now understands AzerothCore's colorized `Ticket: <id>.` output instead of assuming a `Ticket #<id>` format
+- Ticket rows now populate the **Player**, **Created**, and **Last Updated** columns more accurately from labeled GM-ticket fields
+- Ticket detail view now renders a structured summary for the selected ticket message, comment, and response instead of showing the raw SOAP output line
+
 ## [2.4.2] - 2026-04-30
 
 ### Fixed

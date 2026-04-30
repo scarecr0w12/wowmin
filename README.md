@@ -81,6 +81,13 @@ and direct database access.
 - Player details and moderation actions
 - Kick, ban, mute, freeze, and more
 
+### GM Tickets
+- Dedicated **Tickets** tab for open, online, closed, and escalated GM tickets
+- Ticket list parsing understands AzerothCore's colorized GM-ticket output and fills the player, created, and last-updated columns directly from the server response
+- Selecting a ticket opens a structured detail panel with the ticket message, comment, and response when available
+- Quick ticket actions for assign, unassign, comment, close, delete, escalate, and response management
+- Optional auto-refresh keeps the queue current while connected
+
 ## Prerequisites
 
 | Requirement | Notes |
@@ -191,6 +198,13 @@ npm start
 4. Use the search field to find auction-house rows by item name, numeric item entry, or owner name.
 5. Review **Average Market Values** for quick per-item pricing averages and **Auction House Listings** for the live individual rows behind that market.
 6. Use **Character Gold Lookup** to inspect the money held by a specific character.
+
+### GM Tickets
+1. Navigate to the **Tickets** tab while connected to SOAP.
+2. Use the filter buttons to switch between **Open**, **Online**, **Closed**, and **Escalated** ticket queues.
+3. Click a ticket row to open the detail panel and review the player, created age, last change, and ticket message.
+4. Use the inline row buttons or the forms below the table to assign, comment, escalate, close, delete, or manage ticket responses.
+5. Enable **Auto (30s)** if you want the ticket queue to refresh periodically while connected.
 
 #### Economy monitor notes
 
