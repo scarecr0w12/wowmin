@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.4.2] - 2026-04-30
+
+### Fixed
+
+- Restored the missing **Tickets** tab handlers in the TypeScript renderer so ticket lists, detail views, actions, and auto-refresh work again in the live app bundle
+
 ## [2.4.1] - 2026-04-22
 
 ### Improved

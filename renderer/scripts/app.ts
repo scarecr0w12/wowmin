@@ -553,6 +553,10 @@ function getActiveMainTabId(): MainTabId {
 }
 
 function onMainTabActivated(tabId: MainTabId): void {
+  if (tabId === 'tickets' && state.connected) {
+    void loadTickets();
+  }
+
   if (tabId === 'map') {
     Object.keys(CONTINENT_BOUNDS).forEach((cid) => preloadMapImage(Number(cid)));
     requestAnimationFrame(() => renderMapCanvas());
@@ -654,6 +658,9 @@ $btnConnect?.addEventListener('click', async () => {
     logActivity('server info', result.message, true);
     refreshDashboard();
     startDashboardAutoRefresh();
+    if (getActiveMainTabId() === 'tickets') {
+      void loadTickets();
+    }
   } else {
     setConnected(false);
     appendOutput(
@@ -667,6 +674,12 @@ $btnDisconnect?.addEventListener('click', async () => {
   setConnected(false);
   stopDashboardAutoRefresh();
   stopPlayersAutoRefresh();
+  if (ticketAutoInterval) {
+    clearInterval(ticketAutoInterval);
+    ticketAutoInterval = null;
+  }
+  const autoTicketsCb = $<HTMLInputElement>('auto-refresh-tickets');
+  if (autoTicketsCb) autoTicketsCb.checked = false;
   appendOutput(`<div class="entry"><span class="response">Disconnected.</span></div>`);
   resetDashboard();
 });
@@ -1626,6 +1639,337 @@ $('set-addon-form')?.addEventListener('submit', async (e) => {
   const resultEl = $<HTMLElement>('set-addon-result');
   if (resultEl) showResult(resultEl, result.success, result.message || '(done)');
   logActivity(`account set addon ${user} ${addon}`, result.message || '(done)', result.success);
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// TICKETS TAB
+// ═══════════════════════════════════════════════════════════════════════════
+
+interface TicketRow {
+  id: string;
+  player: string;
+  created: string;
+  lastChanged: string;
+  assignedTo: string;
+  raw: string;
+}
+
+let ticketFilter = 'list';
+let ticketAutoInterval: ReturnType<typeof setInterval> | null = null;
+let ticketsLoaded = false;
+
+const $ticketTbody = $<HTMLElement>('ticket-tbody');
+const $ticketCount = $<HTMLElement>('ticket-count');
+const $ticketLoading = $<HTMLElement>('ticket-list-loading');
+const $ticketDetail = $<HTMLElement>('ticket-detail-panel');
+const $ticketDetailTitle = $<HTMLElement>('ticket-detail-title');
+const $ticketDetailBody = $<HTMLElement>('ticket-detail-body');
+
+function parseTicketList(raw: string): TicketRow[] {
+  if (!raw) return [];
+
+  const tickets: TicketRow[] = [];
+  const lines = raw.split('\n').map((line) => line.trim()).filter(Boolean);
+  const ticketBlockRegex = /Ticket\s*#?(\d+)/i;
+  let currentTicket: TicketRow | null = null;
+
+  for (const line of lines) {
+    const idMatch = line.match(ticketBlockRegex);
+    if (idMatch) {
+      if (currentTicket) tickets.push(currentTicket);
+
+      const id = idMatch[1];
+      const playerMatch = line.match(/(?:Created\s+by|from)[:\s]+['"]?([^\s.'"\n]+)/i);
+      const createdMatch = line.match(/Created\s+(?:on)?[:\s]+(.+?)(?:\.|Last|$)/i);
+      const changedMatch = line.match(/Last\s+chang(?:e|ed)\s+by[:\s]+([^\n.]+)/i);
+      const assignedMatch = line.match(/Assign(?:ed)?\s+(?:to)?[:\s]+([^\n.]+)/i);
+
+      currentTicket = {
+        id,
+        player: playerMatch ? playerMatch[1] : '',
+        created: createdMatch ? createdMatch[1].trim() : '',
+        lastChanged: changedMatch ? changedMatch[1].trim() : '',
+        assignedTo: assignedMatch ? assignedMatch[1].trim() : '',
+        raw: line,
+      };
+      continue;
+    }
+
+    if (!currentTicket) continue;
+
+    currentTicket.raw += `\n${line}`;
+
+    if (!currentTicket.player) {
+      const playerMatch = line.match(/(?:Created\s+by|from)[:\s]+['"]?([^\s.'"\n]+)/i);
+      if (playerMatch) currentTicket.player = playerMatch[1];
+    }
+
+    if (!currentTicket.assignedTo) {
+      const assignedMatch = line.match(/Assign(?:ed)?\s+(?:to)?[:\s]+([^\n.]+)/i);
+      if (assignedMatch) currentTicket.assignedTo = assignedMatch[1].trim();
+    }
+  }
+
+  if (currentTicket) tickets.push(currentTicket);
+
+  if (tickets.length === 0 && raw.trim() && !raw.match(/no\s+(open|online|closed|escalated)?\s*(?:gm\s+)?tickets/i)) {
+    const anyIds = raw.match(/#(\d+)/g);
+    if (anyIds) {
+      for (const match of anyIds) {
+        tickets.push({
+          id: match.replace('#', ''),
+          player: '',
+          created: '',
+          lastChanged: '',
+          assignedTo: '',
+          raw,
+        });
+      }
+    }
+  }
+
+  return tickets;
+}
+
+function renderTicketTable(tickets: TicketRow[]): void {
+  if (!$ticketTbody || !$ticketCount) return;
+
+  $ticketTbody.innerHTML = '';
+  $ticketCount.textContent = `${tickets.length} ticket${tickets.length !== 1 ? 's' : ''}`;
+
+  if (tickets.length === 0) {
+    $ticketTbody.innerHTML = '<tr><td colspan="6" class="placeholder">No tickets found</td></tr>';
+    return;
+  }
+
+  for (const ticket of tickets) {
+    const tr = document.createElement('tr');
+    tr.dataset.ticketId = ticket.id;
+    tr.innerHTML =
+      `<td class="ticket-id">#${escapeHtml(ticket.id)}</td>` +
+      `<td class="ticket-player">${escapeHtml(ticket.player || '—')}</td>` +
+      `<td class="ticket-date">${escapeHtml(ticket.created || '—')}</td>` +
+      `<td class="ticket-date">${escapeHtml(ticket.lastChanged || '—')}</td>` +
+      `<td class="${ticket.assignedTo && ticket.assignedTo !== '(no messages)' ? 'ticket-assignee' : 'ticket-assignee unassigned'}">${escapeHtml(ticket.assignedTo || 'Unassigned')}</td>` +
+      `<td class="td-actions">` +
+      `<button class="tbl-action ticket-view-btn" data-id="${escapeHtml(ticket.id)}" title="View details">👁</button>` +
+      `<button class="tbl-action ticket-close-btn" data-id="${escapeHtml(ticket.id)}" title="Close ticket">✔</button>` +
+      `<button class="tbl-action danger ticket-delete-btn" data-id="${escapeHtml(ticket.id)}" title="Delete ticket">✕</button>` +
+      `</td>`;
+
+    tr.addEventListener('click', (event) => {
+      if ((event.target as HTMLElement).closest('.tbl-action')) return;
+      void viewTicket(ticket.id);
+      $ticketTbody.querySelectorAll('tr.selected').forEach((row) => row.classList.remove('selected'));
+      tr.classList.add('selected');
+    });
+
+    $ticketTbody.appendChild(tr);
+  }
+
+  $ticketTbody.querySelectorAll<HTMLButtonElement>('.ticket-view-btn').forEach((button) => {
+    button.addEventListener('click', () => {
+      if (!button.dataset.id) return;
+      void viewTicket(button.dataset.id);
+    });
+  });
+
+  $ticketTbody.querySelectorAll<HTMLButtonElement>('.ticket-close-btn').forEach((button) => {
+    button.addEventListener('click', async () => {
+      if (!button.dataset.id) return;
+      const result = await exec(`ticket close ${button.dataset.id}`);
+      logActivity(`ticket close ${button.dataset.id}`, result.message || '(done)', result.success);
+      void loadTickets();
+    });
+  });
+
+  $ticketTbody.querySelectorAll<HTMLButtonElement>('.ticket-delete-btn').forEach((button) => {
+    button.addEventListener('click', async () => {
+      if (!button.dataset.id) return;
+      const confirmed = await showModal({
+        title: 'Delete Ticket',
+        message: `Delete ticket #${button.dataset.id}? This cannot be undone.`,
+      });
+      if (!confirmed) return;
+
+      const result = await exec(`ticket delete ${button.dataset.id}`);
+      logActivity(`ticket delete ${button.dataset.id}`, result.message || '(done)', result.success);
+      void loadTickets();
+    });
+  });
+}
+
+async function loadTickets(): Promise<void> {
+  if (!$ticketTbody || !$ticketCount) return;
+
+  if (!state.connected) {
+    $ticketTbody.innerHTML = '<tr><td colspan="6" class="placeholder">Connect to load tickets</td></tr>';
+    $ticketCount.textContent = '0 tickets';
+    return;
+  }
+
+  $ticketLoading?.classList.remove('hidden');
+  const cmd = `ticket ${ticketFilter}`;
+  const result = await exec(cmd);
+  $ticketLoading?.classList.add('hidden');
+
+  if (!result.success) {
+    $ticketTbody.innerHTML = `<tr><td colspan="6" class="placeholder" style="color:var(--accent)">${escapeHtml(result.message || 'Failed to load tickets')}</td></tr>`;
+    $ticketCount.textContent = 'Error';
+    logActivity(cmd, result.message || 'Error', false);
+    return;
+  }
+
+  const tickets = parseTicketList(result.message);
+  renderTicketTable(tickets);
+  logActivity(cmd, `${tickets.length} ticket(s) loaded`, true);
+  ticketsLoaded = true;
+}
+
+async function viewTicket(id: string): Promise<void> {
+  if (!$ticketDetail || !$ticketDetailTitle || !$ticketDetailBody) return;
+
+  $ticketDetail.classList.remove('hidden');
+  $ticketDetailTitle.textContent = `Ticket #${id}`;
+  $ticketDetailBody.innerHTML = '<p class="placeholder">Loading…</p>';
+
+  const ticketActionId = $<HTMLInputElement>('ta-id');
+  const ticketResponseId = $<HTMLInputElement>('tr-id');
+  if (ticketActionId) ticketActionId.value = id;
+  if (ticketResponseId) ticketResponseId.value = id;
+
+  const result = await exec(`ticket viewid ${id}`);
+  if (result.success) {
+    $ticketDetailBody.innerHTML = `<div class="ticket-detail-body">${escapeHtml(result.message || 'No details available.')}</div>`;
+  } else {
+    $ticketDetailBody.innerHTML = `<p style="color:var(--accent)">${escapeHtml(result.message || 'Failed to load ticket.')}</p>`;
+  }
+  logActivity(`ticket viewid ${id}`, result.message || '(done)', result.success);
+}
+
+$('ticket-detail-close')?.addEventListener('click', () => {
+  $ticketDetail?.classList.add('hidden');
+  $ticketTbody?.querySelectorAll('tr.selected').forEach((row) => row.classList.remove('selected'));
+});
+
+$$<HTMLButtonElement>('.ticket-filter-tab').forEach((button) => {
+  button.addEventListener('click', () => {
+    $$<HTMLButtonElement>('.ticket-filter-tab').forEach((tab) => tab.classList.remove('active'));
+    button.classList.add('active');
+    ticketFilter = button.dataset.filter || 'list';
+    void loadTickets();
+  });
+});
+
+document.querySelector<HTMLElement>('[data-action="refresh-tickets"]')?.addEventListener('click', () => {
+  void loadTickets();
+});
+
+$<HTMLInputElement>('auto-refresh-tickets')?.addEventListener('change', (event) => {
+  const checked = (event.target as HTMLInputElement).checked;
+  if (ticketAutoInterval) {
+    clearInterval(ticketAutoInterval);
+    ticketAutoInterval = null;
+  }
+
+  if (checked) {
+    ticketAutoInterval = setInterval(() => {
+      if (state.connected) {
+        void loadTickets();
+      }
+    }, 30000);
+  }
+});
+
+$('ticket-action-form')?.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const id = $<HTMLInputElement>('ta-id')?.value.trim() ?? '';
+  const action = $<HTMLSelectElement>('ta-action')?.value ?? '';
+  const extra = $<HTMLInputElement>('ta-extra')?.value.trim() ?? '';
+  if (!id || !state.connected) return;
+
+  let cmd = '';
+  switch (action) {
+    case 'close':
+      cmd = `ticket close ${id}`;
+      break;
+    case 'delete':
+      cmd = `ticket delete ${id}`;
+      break;
+    case 'escalate':
+      cmd = `ticket escalate ${id}`;
+      break;
+    case 'assign':
+      cmd = `ticket assign ${id} ${extra}`;
+      break;
+    case 'unassign':
+      cmd = `ticket unassign ${id}`;
+      break;
+    case 'comment':
+      cmd = `ticket comment ${id} ${extra}`;
+      break;
+    default:
+      cmd = `ticket ${action} ${id}`;
+      break;
+  }
+
+  const resultEl = $<HTMLElement>('ticket-action-result');
+  const result = await exec(cmd);
+  showResult(resultEl, result.success, result.message || '(done)');
+  logActivity(cmd, result.message || '(done)', result.success);
+  void loadTickets();
+});
+
+$('ticket-response-form')?.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const id = $<HTMLInputElement>('tr-id')?.value.trim() ?? '';
+  const action = $<HTMLSelectElement>('tr-action')?.value ?? '';
+  const text = $<HTMLInputElement>('tr-text')?.value.trim() ?? '';
+  if (!id || !state.connected) return;
+
+  let cmd = '';
+  switch (action) {
+    case 'append':
+      cmd = `ticket response append ${id} ${text}`;
+      break;
+    case 'appendln':
+      cmd = `ticket response appendln ${id} ${text}`;
+      break;
+    case 'show':
+      cmd = `ticket response show ${id}`;
+      break;
+    case 'delete':
+      cmd = `ticket response delete ${id}`;
+      break;
+    default:
+      cmd = `ticket response ${action} ${id}`;
+      break;
+  }
+
+  const resultEl = $<HTMLElement>('ticket-response-result');
+  const result = await exec(cmd);
+  showResult(resultEl, result.success, result.message || '(done)');
+  logActivity(cmd, result.message || '(done)', result.success);
+});
+
+$('btn-ticket-reset')?.addEventListener('click', async () => {
+  if (!state.connected) return;
+  const resultEl = $<HTMLElement>('ticket-system-result');
+  const result = await exec('ticket reset');
+  showResult(resultEl, result.success, result.message || '(done)');
+  logActivity('ticket reset', result.message || '(done)', result.success);
+  void loadTickets();
+});
+
+$('btn-ticket-toggle')?.addEventListener('click', async () => {
+  if (!state.connected) return;
+  const resultEl = $<HTMLElement>('ticket-system-result');
+  const result = await exec('ticket togglesystem');
+  showResult(resultEl, result.success, result.message || '(done)');
+  logActivity('ticket togglesystem', result.message || '(done)', result.success);
+  if (getActiveMainTabId() === 'tickets' || ticketsLoaded) {
+    void loadTickets();
+  }
 });
 
 // ── Profile Management ─────────────────────────────────────────────────────
