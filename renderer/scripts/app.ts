@@ -4873,6 +4873,8 @@ const $mapPlayerCount     = $<HTMLElement>('map-player-count');
 const $mapPlayerList      = $<HTMLElement>('map-player-list');
 const $mapAutoRefresh     = $<HTMLInputElement>('map-auto-refresh');
 const $mapFilterType      = $<HTMLSelectElement>('map-filter-type');
+const $mapLevelMin        = $<HTMLInputElement>('map-level-min');
+const $mapLevelMax        = $<HTMLInputElement>('map-level-max');
 const $mapShowBotWaypoint = $<HTMLInputElement>('map-show-bot-waypoint');
 const $mapPlayerbotsDbName = $<HTMLInputElement>('map-playerbots-db-name');
 const $mapRefreshBtn      = $<HTMLButtonElement>('map-refresh-btn');
@@ -5188,11 +5190,16 @@ function panMap(nextPanX: number, nextPanY: number): void {
 function getMapFilteredPlayers(): MapPlayerPosition[] {
   const filterVal = $mapFilterType?.value || 'real';
   const continent = state.mapSelectedContinent;
+  const minRaw = Number($mapLevelMin?.value);
+  const maxRaw = Number($mapLevelMax?.value);
+  const minLevel = Number.isFinite(minRaw) && minRaw > 0 ? minRaw : 0;
+  const maxLevel = Number.isFinite(maxRaw) && maxRaw > 0 ? maxRaw : Infinity;
   return mapAllPlayers.filter((p) => {
     if (p.map !== continent) return false;
     const isBot = /^RNDBOT/i.test(p.account);
     if (filterVal === 'real' && isBot) return false;
     if (filterVal === 'bots' && !isBot) return false;
+    if (p.level < minLevel || p.level > maxLevel) return false;
     return true;
   });
 }
@@ -5769,6 +5776,16 @@ $mapFilterType?.addEventListener('change', () => {
   renderMapPlayerList();
   renderMapSelectedPanel();
 });
+
+function onMapLevelFilterChange(): void {
+  if ($mapPlayerCount) $mapPlayerCount.textContent = `${getMapFilteredPlayers().length} on this map`;
+  renderMapCanvas();
+  renderMapPlayerList();
+  renderMapSelectedPanel();
+}
+
+$mapLevelMin?.addEventListener('input', onMapLevelFilterChange);
+$mapLevelMax?.addEventListener('input', onMapLevelFilterChange);
 
 // ResizeObserver keeps canvas sized correctly while the tab is visible
 const _mapResizeObserver = new ResizeObserver(() => {
