@@ -29,7 +29,10 @@ const DEFAULT_LOG_MONITOR_CONFIG: LogMonitorConfig = {
   host: '127.0.0.1',
   port: 22,
   username: 'root',
+  sshAuthMethod: 'password',
   password: '',
+  sshPrivateKeyPath: '',
+  sshPrivateKeyPassphrase: '',
   worldserverConfigPath: '/etc/azerothcore/worldserver.conf',
   liveFollow: false,
   refreshIntervalSeconds: 5,
@@ -215,12 +218,16 @@ export class ConfigStore {
 
   private normalizeLogMonitorConfig(primary?: Partial<LogMonitorConfig>, fallback?: Partial<SoapConfig>): LogMonitorConfig {
     const source = primary || {};
+    const sshAuthMethod = source.sshAuthMethod === 'key' ? 'key' : DEFAULT_LOG_MONITOR_CONFIG.sshAuthMethod;
 
     return {
       host: source.host?.trim() || fallback?.host?.trim() || DEFAULT_LOG_MONITOR_CONFIG.host,
       port: this.normalizePort(source.port, DEFAULT_LOG_MONITOR_CONFIG.port),
       username: source.username?.trim() || fallback?.username?.trim() || DEFAULT_LOG_MONITOR_CONFIG.username,
+      sshAuthMethod,
       password: source.password || DEFAULT_LOG_MONITOR_CONFIG.password,
+      sshPrivateKeyPath: source.sshPrivateKeyPath?.trim() || DEFAULT_LOG_MONITOR_CONFIG.sshPrivateKeyPath,
+      sshPrivateKeyPassphrase: source.sshPrivateKeyPassphrase || DEFAULT_LOG_MONITOR_CONFIG.sshPrivateKeyPassphrase,
       worldserverConfigPath: source.worldserverConfigPath?.trim() || DEFAULT_LOG_MONITOR_CONFIG.worldserverConfigPath,
       liveFollow: typeof source.liveFollow === 'boolean' ? source.liveFollow : DEFAULT_LOG_MONITOR_CONFIG.liveFollow,
       refreshIntervalSeconds: this.normalizeRefreshInterval(source.refreshIntervalSeconds, DEFAULT_LOG_MONITOR_CONFIG.refreshIntervalSeconds),

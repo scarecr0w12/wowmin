@@ -199,7 +199,10 @@ export interface LogMonitorConfig {
   host: string;
   port: number;
   username: string;
+  sshAuthMethod: 'password' | 'key';
   password: string;
+  sshPrivateKeyPath: string;
+  sshPrivateKeyPassphrase: string;
   worldserverConfigPath: string;
   liveFollow: boolean;
   refreshIntervalSeconds: number;

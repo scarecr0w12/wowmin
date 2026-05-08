@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Remote log monitoring now supports SSH private-key authentication in addition to password login, including optional private-key passphrases and persisted key-path settings in saved profiles
+
+### Improved
+
+- The **Economy** tab's **Average Market Values** table now supports client-side filtering of loaded rows plus interactive column sorting for item pricing analysis
+
+### Fixed
+
+- Economy market summaries and auction listings can now exclude Playerbot-owned data by resolving `RNDBOT` auth-account usernames from the derived auth database, keeping overview stats, listings, and character gold lookups focused on real-player activity when desired
+
 ## [2.4.3] - 2026-04-30
 
 ### Fixed

@@ -62,7 +62,7 @@ and direct database access.
 - Flag unreadable configured targets and preview the latest log output directly in-app
 - Optional live follow mode refreshes the selected log preview every few seconds for a lightweight `tail -f` workflow
 - Save remote log connection details and follow-mode settings as part of an existing connection profile
-- Works with password-based SSH/SFTP access today
+- Supports either password-based SSH/SFTP access or SSH private keys (with optional passphrase)
 
 ### App Updates
 - Automatically checks GitHub releases on startup for newer app versions
@@ -183,7 +183,7 @@ npm start
 
 ### Remote Log Monitor
 1. Navigate to the **Logs** tab.
-2. Enter the remote SSH host, port, username, password, and the remote `worldserver.conf` path.
+2. Enter the remote SSH host, port, username, choose **Password** or **SSH Key** authentication, and provide either the password or a local private-key path (plus optional key passphrase).
 3. Click **Scan Remote Logs** to inspect `LogsDir`, appenders, loggers, packet log settings, and readable files.
 4. Review the summary cards and warnings to spot unreadable configured paths, missing dynamic log matches, or directory access issues.
 5. Use the **Logger** picker to choose the subsystem you want to inspect, then choose one of its currently available **Live File** entries.
@@ -214,7 +214,8 @@ npm start
 
 #### Remote log monitor notes
 
-- The current remote log workflow uses **username/password SSH/SFTP authentication**.
+- The remote log workflow supports **username/password** authentication or **SSH private-key authentication**.
+- When using SSH keys, the private-key path is read from the machine running the desktop app, so use a local path such as `~/.ssh/id_rsa` or an absolute filesystem path.
 - The app reads `worldserver.conf` remotely and infers log file locations from `LogsDir`, `Appender.*`, and `PacketLogFile`.
 - Dynamic file appenders such as `gm_%s.log` are matched against the current contents of the resolved logs directory.
 - Logger-to-file matching is resolved in-app, so the live file picker only shows files currently associated with the selected logger instead of every readable file in the logs directory.

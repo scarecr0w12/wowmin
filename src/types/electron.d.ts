@@ -80,6 +80,10 @@ export interface EconomyCharacterGoldResult {
   accountId: number | null;
 }
 
+export interface EconomyQueryOptions {
+  excludePlayerbots?: boolean;
+}
+
 export interface EconomyAuctionRow {
   auctionId: number;
   itemEntry: number;
@@ -162,10 +166,10 @@ export type IpcChannels = {
 
   'economy:connect': (config: DbConfig) => DbConnectionState;
   'economy:disconnect': () => void;
-  'economy:getOverview': () => EconomyOverview;
-  'economy:getCharacterGold': (characterName: string) => EconomyCharacterGoldResult;
-  'economy:searchAuctions': (searchTerm?: string, limit?: number) => EconomyAuctionRow[];
-  'economy:getMarketSummary': (searchTerm?: string, limit?: number) => EconomyMarketSummaryRow[];
+  'economy:getOverview': (options?: EconomyQueryOptions) => EconomyOverview;
+  'economy:getCharacterGold': (characterName: string, options?: EconomyQueryOptions) => EconomyCharacterGoldResult;
+  'economy:searchAuctions': (searchTerm?: string, limit?: number, options?: EconomyQueryOptions) => EconomyAuctionRow[];
+  'economy:getMarketSummary': (searchTerm?: string, limit?: number, options?: EconomyQueryOptions) => EconomyMarketSummaryRow[];
   
   // Profile operations
   'config:getProfiles': () => ConnectionProfile[];

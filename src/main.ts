@@ -791,22 +791,31 @@ function getEconomyWorldTable(tableName: string): string {
   return `${escapeIdentifier(databaseName)}.${escapeIdentifier(tableName)}`;
 }
 
-function buildEconomySearchFilter(searchTerm: string): { whereClause: string; params: unknown[] } {
+function getEconomyAuthTable(): string {
+  const databaseName = deriveAuthDatabaseName(economyDbService.config?.database || '');
+  return `${escapeIdentifier(databaseName)}.\`account\``;
+}
+
+function buildEconomyWhereClause(conditions: string[]): string {
+  return conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
+}
+
+function buildEconomySearchFilter(searchTerm: string): { conditions: string[]; params: unknown[] } {
   const trimmed = searchTerm.trim();
   if (!trimmed) {
-    return { whereClause: '', params: [] };
+    return { conditions: [], params: [] };
   }
 
   const like = `%${trimmed}%`;
   if (/^\d+$/.test(trimmed)) {
     return {
-      whereClause: 'WHERE (it.name LIKE ? OR ownerChar.name LIKE ? OR CAST(ii.itemEntry AS CHAR) = ?)',
+      conditions: ['(it.name LIKE ? OR ownerChar.name LIKE ? OR CAST(ii.itemEntry AS CHAR) = ?)'],
       params: [like, like, trimmed],
     };
   }
 
   return {
-    whereClause: 'WHERE (it.name LIKE ? OR ownerChar.name LIKE ?)',
+    conditions: ['(it.name LIKE ? OR ownerChar.name LIKE ?)'],
     params: [like, like],
   };
 }
@@ -828,10 +837,19 @@ ipcMain.handle('economy:disconnect', async (): Promise<void> => {
   await economyDbService.disconnect();
 });
 
-ipcMain.handle('economy:getOverview', async (): Promise<EconomyOverview> => {
+ipcMain.handle('economy:getOverview', async (_event, options?: { excludePlayerbots?: boolean }): Promise<EconomyOverview> => {
   if (!economyDbService.connected) {
     throw new Error('Economy database is not connected');
   }
+
+  const excludePlayerbots = Boolean(options?.excludePlayerbots);
+  const authTable = getEconomyAuthTable();
+  const auctionWhereClause = buildEconomyWhereClause(excludePlayerbots
+    ? ["COALESCE(ownerAccount.username, '') NOT LIKE 'RNDBOT%'"]
+    : []);
+  const characterWhereClause = buildEconomyWhereClause(excludePlayerbots
+    ? ["COALESCE(charAccount.username, '') NOT LIKE 'RNDBOT%'"]
+    : []);
 
   const auctionStatsResult = await economyDbService.query<{
     totalAuctions: number;
@@ -850,6 +868,9 @@ ipcMain.handle('economy:getOverview', async (): Promise<EconomyOverview> => {
       COALESCE(AVG(CASE WHEN ah.buyoutprice > 0 AND ii.count > 0 THEN ah.buyoutprice / ii.count END), 0) AS averageUnitBuyout
     FROM auctionhouse ah
     INNER JOIN item_instance ii ON ii.guid = ah.itemguid
+    LEFT JOIN characters ownerChar ON ownerChar.guid = ah.itemowner
+    LEFT JOIN ${authTable} ownerAccount ON ownerAccount.id = ownerChar.account
+    ${auctionWhereClause}
   `);
 
   const characterStatsResult = await economyDbService.query<{
@@ -862,6 +883,8 @@ ipcMain.handle('economy:getOverview', async (): Promise<EconomyOverview> => {
       COALESCE(SUM(money), 0) AS totalCharacterGold,
       COALESCE(AVG(money), 0) AS averageCharacterGold
     FROM characters
+    LEFT JOIN ${authTable} charAccount ON charAccount.id = characters.account
+    ${characterWhereClause}
   `);
 
   const richestCharacterResult = await economyDbService.query<{
@@ -870,6 +893,8 @@ ipcMain.handle('economy:getOverview', async (): Promise<EconomyOverview> => {
   }>(`
     SELECT name, money
     FROM characters
+    LEFT JOIN ${authTable} charAccount ON charAccount.id = characters.account
+    ${characterWhereClause}
     ORDER BY money DESC, name ASC
     LIMIT 1
   `);
@@ -893,12 +918,14 @@ ipcMain.handle('economy:getOverview', async (): Promise<EconomyOverview> => {
   };
 });
 
-ipcMain.handle('economy:getCharacterGold', async (_event, characterName: string): Promise<EconomyCharacterGoldResult> => {
+ipcMain.handle('economy:getCharacterGold', async (_event, characterName: string, options?: { excludePlayerbots?: boolean }): Promise<EconomyCharacterGoldResult> => {
   if (!economyDbService.connected) {
     throw new Error('Economy database is not connected');
   }
 
   const name = characterName.trim();
+  const excludePlayerbots = Boolean(options?.excludePlayerbots);
+  const authTable = getEconomyAuthTable();
   if (!name) {
     return {
       found: false,
@@ -923,7 +950,8 @@ ipcMain.handle('economy:getCharacterGold', async (_event, characterName: string)
   }>(`
     SELECT name, level, race, class, money, online, account
     FROM characters
-    WHERE LOWER(name) = LOWER(?)
+    LEFT JOIN ${authTable} charAccount ON charAccount.id = characters.account
+    WHERE LOWER(name) = LOWER(?) ${excludePlayerbots ? "AND COALESCE(charAccount.username, '') NOT LIKE 'RNDBOT%'" : ''}
     LIMIT 1
   `, [name]);
 
@@ -953,14 +981,19 @@ ipcMain.handle('economy:getCharacterGold', async (_event, characterName: string)
   };
 });
 
-ipcMain.handle('economy:searchAuctions', async (_event, searchTerm = '', limit = 50): Promise<EconomyAuctionRow[]> => {
+ipcMain.handle('economy:searchAuctions', async (_event, searchTerm = '', limit = 50, options?: { excludePlayerbots?: boolean }): Promise<EconomyAuctionRow[]> => {
   if (!economyDbService.connected) {
     throw new Error('Economy database is not connected');
   }
 
   const worldItemTemplateTable = getEconomyWorldTable('item_template');
+  const authTable = getEconomyAuthTable();
   const normalizedLimit = Math.min(Math.max(numField(limit, 50), 1), 100);
-  const { whereClause, params } = buildEconomySearchFilter(searchTerm);
+  const { conditions, params } = buildEconomySearchFilter(searchTerm);
+  if (options?.excludePlayerbots) {
+    conditions.push("COALESCE(ownerAccount.username, '') NOT LIKE 'RNDBOT%'");
+  }
+  const whereClause = buildEconomyWhereClause(conditions);
 
   const result = await economyDbService.query<{
     auctionId: number;
@@ -996,6 +1029,7 @@ ipcMain.handle('economy:searchAuctions', async (_event, searchTerm = '', limit =
     INNER JOIN ${worldItemTemplateTable} it ON it.entry = ii.itemEntry
     LEFT JOIN characters ownerChar ON ownerChar.guid = ah.itemowner
     LEFT JOIN characters bidderChar ON bidderChar.guid = ah.buyguid
+    LEFT JOIN ${authTable} ownerAccount ON ownerAccount.id = ownerChar.account
     ${whereClause}
     ORDER BY ah.time ASC, ah.buyoutprice DESC, ah.id DESC
     LIMIT ${normalizedLimit}
@@ -1018,14 +1052,19 @@ ipcMain.handle('economy:searchAuctions', async (_event, searchTerm = '', limit =
   }));
 });
 
-ipcMain.handle('economy:getMarketSummary', async (_event, searchTerm = '', limit = 25): Promise<EconomyMarketSummaryRow[]> => {
+ipcMain.handle('economy:getMarketSummary', async (_event, searchTerm = '', limit = 25, options?: { excludePlayerbots?: boolean }): Promise<EconomyMarketSummaryRow[]> => {
   if (!economyDbService.connected) {
     throw new Error('Economy database is not connected');
   }
 
   const worldItemTemplateTable = getEconomyWorldTable('item_template');
+  const authTable = getEconomyAuthTable();
   const normalizedLimit = Math.min(Math.max(numField(limit, 25), 1), 100);
-  const { whereClause, params } = buildEconomySearchFilter(searchTerm);
+  const { conditions, params } = buildEconomySearchFilter(searchTerm);
+  if (options?.excludePlayerbots) {
+    conditions.push("COALESCE(ownerAccount.username, '') NOT LIKE 'RNDBOT%'");
+  }
+  const whereClause = buildEconomyWhereClause(conditions);
 
   const result = await economyDbService.query<{
     itemEntry: number;
@@ -1052,6 +1091,7 @@ ipcMain.handle('economy:getMarketSummary', async (_event, searchTerm = '', limit
     INNER JOIN item_instance ii ON ii.guid = ah.itemguid
     INNER JOIN ${worldItemTemplateTable} it ON it.entry = ii.itemEntry
     LEFT JOIN characters ownerChar ON ownerChar.guid = ah.itemowner
+    LEFT JOIN ${authTable} ownerAccount ON ownerAccount.id = ownerChar.account
     ${whereClause}
     GROUP BY ii.itemEntry, it.name, it.Quality
     ORDER BY listingCount DESC, totalQuantity DESC, averageUnitBuyout DESC

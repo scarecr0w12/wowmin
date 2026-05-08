@@ -1,4 +1,6 @@
 import { Client, type ConnectConfig, type SFTPWrapper } from 'ssh2';
+import * as fs from 'fs';
+import * as os from 'os';
 import * as path from 'path';
 import { LogMonitorConfig, LogMonitorInspectionResult, LogMonitorAppenderInfo, LogMonitorFileInfo, LogMonitorFileTailResult, LogMonitorLoggerInfo } from './types/electron';
 
@@ -147,14 +149,46 @@ function uniquePaths(paths: Array<string | null | undefined>): string[] {
   return [...new Set(paths.filter((value): value is string => Boolean(value)))];
 }
 
+function resolveLocalPrivateKeyPath(inputPath: string): string {
+  const trimmed = inputPath.trim();
+  if (!trimmed) {
+    throw new Error('SSH private key path is required when SSH key authentication is selected.');
+  }
+
+  if (trimmed === '~') {
+    return os.homedir();
+  }
+
+  if (trimmed.startsWith('~/')) {
+    return path.join(os.homedir(), trimmed.slice(2));
+  }
+
+  return path.resolve(trimmed);
+}
+
 function buildConnectConfig(config: LogMonitorConfig): ConnectConfig {
-  return {
+  const baseConfig: ConnectConfig = {
     host: config.host.trim(),
     port: Number(config.port),
     username: config.username.trim(),
-    password: config.password,
     readyTimeout: 20_000,
     tryKeyboard: false,
+  };
+
+  if (config.sshAuthMethod === 'key') {
+    const privateKeyPath = resolveLocalPrivateKeyPath(config.sshPrivateKeyPath);
+    const privateKey = fs.readFileSync(privateKeyPath);
+
+    return {
+      ...baseConfig,
+      privateKey,
+      passphrase: config.sshPrivateKeyPassphrase || undefined,
+    };
+  }
+
+  return {
+    ...baseConfig,
+    password: config.password,
   };
 }
 

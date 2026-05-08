@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron';
-import { SoapConfig, SoapResult, DbConfig, DbConnectionState, QueryResult, FieldInfo, ConnectionProfile, UpdateCheckResult, EntityMediaPreviewRequest, EntityMediaPreviewResult, LogMonitorConfig, LogMonitorInspectionResult, LogMonitorFileTailResult, MapPlayerPosition, MapBotWaypointRequest, MapBotWaypoint, CharacterInventoryResult, EconomyOverview, EconomyCharacterGoldResult, EconomyAuctionRow, EconomyMarketSummaryRow } from './types/electron';
+import { SoapConfig, SoapResult, DbConfig, DbConnectionState, QueryResult, FieldInfo, ConnectionProfile, UpdateCheckResult, EntityMediaPreviewRequest, EntityMediaPreviewResult, LogMonitorConfig, LogMonitorInspectionResult, LogMonitorFileTailResult, MapPlayerPosition, MapBotWaypointRequest, MapBotWaypoint, CharacterInventoryResult, EconomyOverview, EconomyCharacterGoldResult, EconomyAuctionRow, EconomyMarketSummaryRow, EconomyQueryOptions } from './types/electron';
 
 // Type-safe IPC wrapper for renderer process
 const electronAPI = {
@@ -87,14 +87,14 @@ const electronAPI = {
       ipcRenderer.invoke('economy:connect', config),
     disconnect: (): Promise<void> =>
       ipcRenderer.invoke('economy:disconnect'),
-    getOverview: (): Promise<EconomyOverview> =>
-      ipcRenderer.invoke('economy:getOverview'),
-    getCharacterGold: (characterName: string): Promise<EconomyCharacterGoldResult> =>
-      ipcRenderer.invoke('economy:getCharacterGold', characterName),
-    searchAuctions: (searchTerm = '', limit = 50): Promise<EconomyAuctionRow[]> =>
-      ipcRenderer.invoke('economy:searchAuctions', searchTerm, limit),
-    getMarketSummary: (searchTerm = '', limit = 25): Promise<EconomyMarketSummaryRow[]> =>
-      ipcRenderer.invoke('economy:getMarketSummary', searchTerm, limit),
+    getOverview: (options?: EconomyQueryOptions): Promise<EconomyOverview> =>
+      ipcRenderer.invoke('economy:getOverview', options),
+    getCharacterGold: (characterName: string, options?: EconomyQueryOptions): Promise<EconomyCharacterGoldResult> =>
+      ipcRenderer.invoke('economy:getCharacterGold', characterName, options),
+    searchAuctions: (searchTerm = '', limit = 50, options?: EconomyQueryOptions): Promise<EconomyAuctionRow[]> =>
+      ipcRenderer.invoke('economy:searchAuctions', searchTerm, limit, options),
+    getMarketSummary: (searchTerm = '', limit = 25, options?: EconomyQueryOptions): Promise<EconomyMarketSummaryRow[]> =>
+      ipcRenderer.invoke('economy:getMarketSummary', searchTerm, limit, options),
   },
 
   inventory: {

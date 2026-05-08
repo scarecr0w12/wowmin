@@ -1295,7 +1295,17 @@ SELECT * FROM creature_template WHERE entry = 1;" spellcheck="false"></textarea>
               <label>Host <input type="text" id="log-host" value="127.0.0.1" /></label>
               <label>Port <input type="number" id="log-port" value="22" /></label>
               <label>User <input type="text" id="log-username" value="root" /></label>
-              <label>Password <input type="password" id="log-password" /></label>
+              <label>Authentication
+                <select id="log-auth-method">
+                  <option value="password" selected>Password</option>
+                  <option value="key">SSH Key</option>
+                </select>
+              </label>
+              <label id="log-password-group">Password <input type="password" id="log-password" /></label>
+              <div id="log-private-key-group" class="hidden">
+                <label>Private Key Path <input type="text" id="log-private-key-path" placeholder="~/.ssh/id_rsa" /></label>
+                <label>Key Passphrase <input type="password" id="log-private-key-passphrase" placeholder="optional" /></label>
+              </div>
               <label>worldserver.conf Path <input type="text" id="log-config-path" value="/etc/azerothcore/worldserver.conf" /></label>
               <div class="log-monitor-controls-row">
                 <label class="auto-refresh-toggle log-follow-toggle">
@@ -1344,7 +1354,7 @@ SELECT * FROM creature_template WHERE entry = 1;" spellcheck="false"></textarea>
 
       <main class="log-monitor-main">
         <div id="log-summary" class="log-monitor-summary">
-          <p class="placeholder">Connect to a server over SSH/SFTP and scan <code>worldserver.conf</code> to discover configured loggers, appenders, and readable log files.</p>
+          <p class="placeholder">Connect to a server over SSH/SFTP using either a password or SSH key, then scan <code>worldserver.conf</code> to discover configured loggers, appenders, and readable log files.</p>
         </div>
 
         <div class="log-monitor-panels">

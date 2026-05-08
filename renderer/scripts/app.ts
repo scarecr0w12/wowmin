@@ -67,7 +67,10 @@ const DEFAULT_LOG_MONITOR_PROFILE_CONFIG: LogMonitorConfig = {
   host: '127.0.0.1',
   port: 22,
   username: 'root',
+  sshAuthMethod: 'password',
   password: '',
+  sshPrivateKeyPath: '',
+  sshPrivateKeyPassphrase: '',
   worldserverConfigPath: '/etc/azerothcore/worldserver.conf',
   liveFollow: false,
   refreshIntervalSeconds: 5,
@@ -83,7 +86,12 @@ const $btnDeleteProfile = $<HTMLButtonElement>('btn-delete-profile');
 const $logHost = $<HTMLInputElement>('log-host');
 const $logPort = $<HTMLInputElement>('log-port');
 const $logUsername = $<HTMLInputElement>('log-username');
+const $logAuthMethod = $<HTMLSelectElement>('log-auth-method');
 const $logPassword = $<HTMLInputElement>('log-password');
+const $logPrivateKeyPath = $<HTMLInputElement>('log-private-key-path');
+const $logPrivateKeyPassphrase = $<HTMLInputElement>('log-private-key-passphrase');
+const $logPasswordGroup = $<HTMLElement>('log-password-group');
+const $logPrivateKeyGroup = $<HTMLElement>('log-private-key-group');
 const $logConfigPath = $<HTMLInputElement>('log-config-path');
 const $logFollowEnabled = $<HTMLInputElement>('log-follow-enabled');
 const $logRefreshInterval = $<HTMLSelectElement>('log-refresh-interval');
@@ -350,7 +358,10 @@ function getCurrentLogMonitorProfileConfig(): LogMonitorConfig {
     host: $logHost?.value.trim() || DEFAULT_LOG_MONITOR_PROFILE_CONFIG.host,
     port: Number($logPort?.value.trim() || String(DEFAULT_LOG_MONITOR_PROFILE_CONFIG.port)),
     username: $logUsername?.value.trim() || DEFAULT_LOG_MONITOR_PROFILE_CONFIG.username,
+    sshAuthMethod: $logAuthMethod?.value === 'key' ? 'key' : DEFAULT_LOG_MONITOR_PROFILE_CONFIG.sshAuthMethod,
     password: $logPassword?.value || DEFAULT_LOG_MONITOR_PROFILE_CONFIG.password,
+    sshPrivateKeyPath: $logPrivateKeyPath?.value.trim() || DEFAULT_LOG_MONITOR_PROFILE_CONFIG.sshPrivateKeyPath,
+    sshPrivateKeyPassphrase: $logPrivateKeyPassphrase?.value || DEFAULT_LOG_MONITOR_PROFILE_CONFIG.sshPrivateKeyPassphrase,
     worldserverConfigPath: $logConfigPath?.value.trim() || DEFAULT_LOG_MONITOR_PROFILE_CONFIG.worldserverConfigPath,
     liveFollow: $logFollowEnabled?.checked ?? DEFAULT_LOG_MONITOR_PROFILE_CONFIG.liveFollow,
     refreshIntervalSeconds: Number($logRefreshInterval?.value || String(DEFAULT_LOG_MONITOR_PROFILE_CONFIG.refreshIntervalSeconds)),
@@ -411,11 +422,38 @@ function applyLogMonitorProfileConfig(config: Partial<LogMonitorConfig> | undefi
   if ($logHost) $logHost.value = nextConfig.host;
   if ($logPort) $logPort.value = String(nextConfig.port);
   if ($logUsername) $logUsername.value = nextConfig.username;
+  if ($logAuthMethod) $logAuthMethod.value = nextConfig.sshAuthMethod;
   if ($logPassword) $logPassword.value = nextConfig.password;
+  if ($logPrivateKeyPath) $logPrivateKeyPath.value = nextConfig.sshPrivateKeyPath;
+  if ($logPrivateKeyPassphrase) $logPrivateKeyPassphrase.value = nextConfig.sshPrivateKeyPassphrase;
   if ($logConfigPath) $logConfigPath.value = nextConfig.worldserverConfigPath;
   if ($logFollowEnabled) $logFollowEnabled.checked = nextConfig.liveFollow;
   if ($logRefreshInterval) $logRefreshInterval.value = String(nextConfig.refreshIntervalSeconds);
+  updateLogAuthControls();
   updateLogFollowControls();
+}
+
+function isLogKeyAuthSelected(): boolean {
+  return $logAuthMethod?.value === 'key';
+}
+
+function updateLogAuthControls(): void {
+  const usingKey = isLogKeyAuthSelected();
+
+  $logPasswordGroup?.classList.toggle('hidden', usingKey);
+  $logPrivateKeyGroup?.classList.toggle('hidden', !usingKey);
+
+  if ($logPassword) {
+    $logPassword.disabled = usingKey;
+  }
+
+  if ($logPrivateKeyPath) {
+    $logPrivateKeyPath.disabled = !usingKey;
+  }
+
+  if ($logPrivateKeyPassphrase) {
+    $logPrivateKeyPassphrase.disabled = !usingKey;
+  }
 }
 
 function stopLogFollowLoop(): void {
@@ -2470,6 +2508,16 @@ async function scanRemoteLogs(): Promise<void> {
     return;
   }
 
+  if (config.sshAuthMethod === 'key' && !config.sshPrivateKeyPath) {
+    showResult($logStatus, false, 'An SSH private key path is required when SSH key authentication is selected.');
+    return;
+  }
+
+  if (config.sshAuthMethod === 'password' && !config.password) {
+    showResult($logStatus, false, 'A password is required when password authentication is selected.');
+    return;
+  }
+
   stopLogFollowLoop();
   if ($logScanBtn) $logScanBtn.disabled = true;
   if ($logRefreshPreviewBtn) $logRefreshPreviewBtn.disabled = true;
@@ -2504,6 +2552,11 @@ $logFollowEnabled?.addEventListener('change', () => {
   syncLogFollowPolling(true);
 });
 
+$logAuthMethod?.addEventListener('change', () => {
+  updateLogAuthControls();
+  stopLogFollowLoop();
+});
+
 $logRefreshInterval?.addEventListener('change', () => {
   syncLogFollowPolling();
   if (logMonitorState.selectedFilePath && isLogFollowEnabled() && !$logRefreshPreviewBtn?.disabled) {
@@ -2513,7 +2566,7 @@ $logRefreshInterval?.addEventListener('change', () => {
   }
 });
 
-[$logHost, $logPort, $logUsername, $logPassword, $logConfigPath].forEach((element) => {
+[$logHost, $logPort, $logUsername, $logPassword, $logPrivateKeyPath, $logPrivateKeyPassphrase, $logConfigPath].forEach((element) => {
   element?.addEventListener('change', () => {
     stopLogFollowLoop();
   });
