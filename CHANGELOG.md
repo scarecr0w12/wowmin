@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.5.0] - 2026-05-07
+
 ### Added
 
 - Remote log monitoring now supports SSH private-key authentication in addition to password login, including optional private-key passphrases and persisted key-path settings in saved profiles
